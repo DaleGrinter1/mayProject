@@ -6,7 +6,8 @@ screenshot back into the local `screenshots/` folder.
 ## Usage
 
 ```bash
-uv run python script.py https://example.com
+uv run python ssURL.py https://example.com 
+uv run python ssSearch.py 'example search term'
 ```
 
 The first run may take longer while Modal builds the sandbox image.
