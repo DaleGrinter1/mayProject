@@ -19,14 +19,55 @@ import sys
 from playwright.sync_api import sync_playwright
 
 url = sys.argv[1]
-output_path = sys.argv[2]
+image_path = sys.argv[2]
+text_path = sys.argv[3]
+
+
+def lines_for_items(items):
+    lines = []
+    for item in items[:50]:
+        text = " ".join((item.get("text") or "").split())
+        href = item.get("href")
+        if text and href:
+            lines.append(f"- {text}: {href}")
+        elif text:
+            lines.append(f"- {text}")
+    return lines or ["(none)"]
 
 with sync_playwright() as p:
     browser = p.chromium.launch(args=["--no-sandbox"])
     page = browser.new_page(viewport={"width": 1440, "height": 1000})
     page.goto(url, wait_until="domcontentloaded", timeout=60_000)
     page.wait_for_timeout(2_000)
-    page.screenshot(path=output_path, full_page=True)
+
+    links = page.eval_on_selector_all(
+        "a",
+        "els => els.map(el => ({ text: el.innerText, href: el.href })).filter(x => x.text || x.href)"
+    )
+    buttons = page.eval_on_selector_all(
+        "button, input[type=button], input[type=submit]",
+        "els => els.map(el => ({ text: el.innerText || el.value || el.getAttribute('aria-label') || '' }))"
+    )
+    visible_text = page.locator("body").inner_text(timeout=5_000)
+
+    observation = [
+        f"URL: {page.url}",
+        f"Title: {page.title()}",
+        "",
+        "Visible text:",
+        visible_text[:8000],
+        "",
+        "Links:",
+        *lines_for_items(links),
+        "",
+        "Buttons:",
+        *lines_for_items(buttons),
+        "",
+    ]
+
+    page.screenshot(path=image_path, full_page=True)
+    with open(text_path, "w", encoding="utf-8") as file:
+        file.write("\\n".join(observation))
     browser.close()
 """
 
@@ -83,7 +124,8 @@ def screenshot_path(url: str) -> Path:
 
 def screenshot_url(url: str) -> Path:
     app = modal.App.lookup("my-app", create_if_missing=True)
-    local_path = screenshot_path(url)
+    local_image_path = screenshot_path(url)
+    local_text_path = local_image_path.with_suffix(".txt")
 
     sandbox = modal.Sandbox.create(
         "sleep",
@@ -97,19 +139,26 @@ def screenshot_url(url: str) -> Path:
 
     try:
         sandbox.filesystem.write_text(SCREENSHOT_PY, "/tmp/screenshot.py")
-        process = sandbox.exec("python", "/tmp/screenshot.py", url, "/tmp/screenshot.png")
+        process = sandbox.exec(
+            "python",
+            "/tmp/screenshot.py",
+            url,
+            "/tmp/screenshot.png",
+            "/tmp/observation.txt",
+        )
         process.wait()
         stderr = process.stderr.read()
 
         if process.returncode != 0:
             raise RuntimeError(f"Screenshot failed in sandbox:\n{stderr}")
 
-        sandbox.filesystem.copy_to_local("/tmp/screenshot.png", local_path)
+        sandbox.filesystem.copy_to_local("/tmp/screenshot.png", local_image_path)
+        sandbox.filesystem.copy_to_local("/tmp/observation.txt", local_text_path)
     finally:
         sandbox.terminate()
         sandbox.detach()
 
-    return local_path
+    return local_image_path
 
 
 if __name__ == "__main__":
@@ -122,3 +171,4 @@ if __name__ == "__main__":
 
     saved_path = screenshot_url(url)
     print(f"Screenshot saved to {saved_path.resolve()}")
+    print(f"Observation saved to {saved_path.with_suffix('.txt').resolve()}")
