@@ -1,7 +1,9 @@
+from html.parser import HTMLParser
 from pathlib import Path
 import sys
 from time import time
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.request import Request, urlopen
 
 import modal
 
@@ -29,7 +31,48 @@ with sync_playwright() as p:
 """
 
 
-def local_screenshot_path(url: str) -> Path:
+class DuckDuckGoResultsParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.result_urls = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag != "a" or "result__a" not in attrs.get("class", ""):
+            return
+
+        href = attrs.get("href")
+        if href:
+            self.result_urls.append(clean_result_url(href))
+
+
+def clean_result_url(url: str) -> str:
+    query = parse_qs(urlparse(url).query)
+    return unquote(query["uddg"][0]) if "uddg" in query else url
+
+
+def first_search_result(query: str) -> str:
+    search_url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
+    request = Request(search_url, headers={"User-Agent": "Mozilla/5.0"})
+
+    with urlopen(request, timeout=30) as response:
+        html = response.read().decode("utf-8", errors="replace")
+
+    parser = DuckDuckGoResultsParser()
+    parser.feed(html)
+
+    if not parser.result_urls:
+        raise RuntimeError(f"No search results found for: {query}")
+
+    return parser.result_urls[0]
+
+
+def is_valid_url(text: str) -> bool:
+    parsed = urlparse(text)
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+def screenshot_path(url: str) -> Path:
     screenshots_dir = Path("screenshots")
     screenshots_dir.mkdir(exist_ok=True)
 
@@ -40,7 +83,8 @@ def local_screenshot_path(url: str) -> Path:
 
 def screenshot_url(url: str) -> Path:
     app = modal.App.lookup("my-app", create_if_missing=True)
-    local_path = local_screenshot_path(url)
+    local_path = screenshot_path(url)
+
     sandbox = modal.Sandbox.create(
         "sleep",
         "300",
@@ -69,9 +113,12 @@ def screenshot_url(url: str) -> Path:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: uv run python ssURL.py <url>")
+    if len(sys.argv) < 2:
+        raise SystemExit("Usage: uv run python screenshot.py <url or search terms>")
 
-    url = sys.argv[1]
+    text = " ".join(sys.argv[1:])
+    url = text if is_valid_url(text) else first_search_result(text)
+    print(f"Screenshot target: {url}")
+
     saved_path = screenshot_url(url)
     print(f"Screenshot saved to {saved_path.resolve()}")
