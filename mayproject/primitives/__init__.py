@@ -1,4 +1,9 @@
-from mayproject.primitives.browser import BrowserPrimitive
-from mayproject.primitives.shell import ShellPrimitive
+from mayproject.primitives.browser import BrowserCaptureResult, BrowserPrimitive
+from mayproject.primitives.shell import ShellCommandResult, ShellPrimitive
 
-__all__ = ["BrowserPrimitive", "ShellPrimitive"]
+__all__ = [
+    "BrowserCaptureResult",
+    "BrowserPrimitive",
+    "ShellCommandResult",
+    "ShellPrimitive",
+]

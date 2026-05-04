@@ -14,5 +14,7 @@ if __name__ == "__main__":
     print(f"Screenshot target: {url}")
 
     result = capture_url(url)
+    print(f"Run: {result.run.run_id} ({result.status})")
+    print(f"Artifacts: {result.run.artifact_dir.resolve()}")
     print(f"Screenshot saved to {result.image_path.resolve()}")
     print(f"Observation saved to {result.text_path.resolve()}")
