@@ -14,6 +14,7 @@ mayproject/
   cli/                         # console script entry points
   search.py                    # search-term to URL resolution
   urls.py                      # URL helpers
+  workflows/doctor.py          # local setup checks
   workflows/screenshot.py      # product-level screenshot workflow
   workflows/sandbox.py         # named Modal sandbox workflow
   primitives/browser.py        # reusable browser sandbox primitive
@@ -60,15 +61,23 @@ Primitives accept an injectable runner factory, so tests can use
 start the sandbox with a package image, attach Modal Volumes, run commands,
 open Modal's interactive shell, and stop the sandbox when finished.
 
+Quickstart:
+
 ```bash
-uv run may-sandbox create --name devbox --image python --volume my-volume:/workspace/data
-uv run may-sandbox create --name toolbox --image dev
+uv run may-sandbox doctor
+uv run may-sandbox create --name devbox --image dev --volume my-volume:/workspace/data
 uv run may-sandbox list
 uv run may-sandbox list --watch
 uv run may-sandbox status --name devbox
 uv run may-sandbox exec --name devbox -- python --version
 uv run may-sandbox shell --name devbox
 uv run may-sandbox terminate --name devbox
+```
+
+To stop every sandbox started by this project:
+
+```bash
+uv run may-sandbox terminate-all
 ```
 
 Volumes use the `volume-name:/absolute/mount/path` format. Missing volumes are
@@ -86,11 +95,13 @@ Available images:
 uv run python screenshot.py https://example.com
 uv run python screenshot.py "example search term"
 uv run may-screenshot https://example.com
-uv run may-sandbox create --name devbox --image python --volume my-volume:/workspace/data
-uv run may-sandbox create --name toolbox --image dev
+uv run may-sandbox doctor
+uv run may-sandbox create --name devbox --image dev --volume my-volume:/workspace/data
 uv run may-sandbox list
 uv run may-sandbox list --watch --interval 5
+uv run may-sandbox exec --name devbox -- git --version
 uv run may-sandbox shell --name devbox
+uv run may-sandbox terminate-all
 uv run may-shell python --version
 uv run may-python ./path/to/script.py
 ```

@@ -118,6 +118,14 @@ class ManagedSandbox:
         finally:
             sandbox.detach()
 
+    def terminate_all(self) -> list[SandboxHandle]:
+        """Stops every remote computer this project started."""
+
+        handles = self.list()
+        for handle in handles:
+            self.terminate(sandbox_id=handle.object_id)
+        return handles
+
     def shell(self, name: str | None = None, sandbox_id: str | None = None) -> int:
         """Opens a shell inside the remote computer."""
 

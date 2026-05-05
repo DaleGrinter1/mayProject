@@ -1,6 +1,13 @@
 import pytest
 
-from mayproject.cli.sandbox import clear_terminal, main, positive_interval, watch_handles
+from mayproject.cli import sandbox as sandbox_cli
+from mayproject.cli.sandbox import (
+    clear_terminal,
+    friendly_error,
+    main,
+    positive_interval,
+    watch_handles,
+)
 from mayproject.sandbox.fake import FakeSandboxRunner
 from mayproject.sandbox.types import CommandResult, SandboxSpec
 from mayproject.workflows import sandbox as sandbox_workflow
@@ -104,6 +111,15 @@ class SyncListConnector(FakeConnector):
     def list(self, *, tags: dict[str, str]):
         self.list_tags = tags
         yield from self.sandboxes
+
+
+class TerminateAllConnector(FakeConnector):
+    def __init__(self, sandboxes: list[FakeRemoteSandbox]) -> None:
+        super().__init__(sandboxes=sandboxes)
+        self.by_id = {sandbox.object_id: sandbox for sandbox in sandboxes}
+
+    def from_id(self, sandbox_id: str) -> FakeRemoteSandbox:
+        return self.by_id[sandbox_id]
 
 
 def test_parse_volume_mount_accepts_name_and_absolute_path() -> None:
@@ -271,6 +287,19 @@ def test_terminate_stops_and_detaches() -> None:
     assert remote.detached
 
 
+def test_terminate_all_stops_listed_sandboxes() -> None:
+    pybox = FakeRemoteSandbox(object_id="sb-py")
+    browserbox = FakeRemoteSandbox(object_id="sb-browser")
+    connector = TerminateAllConnector([pybox, browserbox])
+    manager = ManagedSandbox(connector=connector)
+
+    handles = manager.terminate_all()
+
+    assert [handle.object_id for handle in handles] == ["sb-py", "sb-browser"]
+    assert pybox.terminated
+    assert browserbox.terminated
+
+
 def test_cli_list_prints_sandbox_rows(monkeypatch, capsys) -> None:
     handles = [
         sandbox_workflow.SandboxHandle(
@@ -299,6 +328,46 @@ def test_cli_list_prints_sandbox_rows(monkeypatch, capsys) -> None:
     assert "python" in output
     assert "browserbox" in output
     assert "browser" in output
+
+
+def test_cli_doctor_prints_checks(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sandbox_cli,
+        "run_doctor",
+        lambda: [
+            sandbox_cli.DoctorCheck("Modal CLI", True, "Modal CLI found."),
+            sandbox_cli.DoctorCheck("Images", True, "Available images: python, browser, dev."),
+        ],
+    )
+
+    result = main(["doctor"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "Modal CLI" in output
+    assert "Available images" in output
+
+
+def test_cli_terminate_all_prints_stopped_sandboxes(monkeypatch, capsys) -> None:
+    handles = [
+        sandbox_workflow.SandboxHandle(
+            object_id="sb-py",
+            app_name="my-app",
+            tags={"name": "pybox", "image": "python"},
+        )
+    ]
+    monkeypatch.setattr(
+        sandbox_workflow.ManagedSandbox,
+        "terminate_all",
+        lambda self: handles,
+    )
+
+    result = main(["terminate-all"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "pybox" in output
+    assert "Terminated 1 managed sandbox" in output
 
 
 def test_watch_handles_refreshes_until_keyboard_interrupt(capsys) -> None:
@@ -368,3 +437,7 @@ def test_clear_terminal_uses_full_screen_clear(capsys) -> None:
     clear_terminal()
 
     assert capsys.readouterr().out == "\033[2J\033[3J\033[H"
+
+
+def test_friendly_error_for_missing_modal_cli() -> None:
+    assert "Modal CLI was not found" in friendly_error(FileNotFoundError())

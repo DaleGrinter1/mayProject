@@ -4,10 +4,14 @@ from mayproject.sandbox.types import ImageName
 
 
 def python_image() -> modal.Image:
+    """Builds a small remote computer with Python."""
+
     return modal.Image.debian_slim(python_version="3.13")
 
 
 def browser_image() -> modal.Image:
+    """Builds a remote computer that can open web pages."""
+
     return (
         python_image()
         .pip_install("playwright")
@@ -26,6 +30,8 @@ def dev_image() -> modal.Image:
 
 
 def get_image(name: ImageName) -> modal.Image:
+    """Chooses the remote computer image by name."""
+
     image_builders = {
         "python": python_image,
         "browser": browser_image,

@@ -3,6 +3,9 @@ import sys
 from collections.abc import Callable
 from time import sleep
 
+import modal
+
+from mayproject.workflows.doctor import DoctorCheck, run_doctor
 from mayproject.workflows.sandbox import ManagedSandbox, parse_volume_mount
 
 
@@ -12,6 +15,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     manager = ManagedSandbox(app_name=args.app_name)
+    try:
+        return run_command(args, manager)
+    except KeyboardInterrupt:
+        print("\nStopped.", file=sys.stderr)
+        return 130
+    except (ValueError, FileNotFoundError, modal.exception.Error) as exc:
+        print(f"Error: {friendly_error(exc)}", file=sys.stderr)
+        return 1
+
+
+def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
+    """Runs the command the person chose."""
 
     if args.action == "create":
         handle = manager.create(
@@ -35,6 +50,10 @@ def main(argv: list[str] | None = None) -> int:
         print_handles(manager.list())
         return 0
 
+    if args.action == "doctor":
+        print_doctor(run_doctor())
+        return 0
+
     if args.action == "exec":
         command = strip_command_separator(args.command)
         result = manager.exec(command, name=args.name, sandbox_id=args.id)
@@ -52,7 +71,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Sandbox terminated: {returncode}")
         return 0
 
-    parser.error("Unknown sandbox action")
+    if args.action == "terminate-all":
+        print_terminated(manager.terminate_all())
+        return 0
+
+    raise ValueError("Unknown sandbox action")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,6 +99,8 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--watch", action="store_true")
     list_parser.add_argument("--interval", type=positive_interval, default=2.0)
 
+    subparsers.add_parser("doctor")
+
     execute = subparsers.add_parser("exec")
     add_sandbox_reference(execute)
     execute.add_argument("command", nargs=argparse.REMAINDER)
@@ -85,6 +110,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     terminate = subparsers.add_parser("terminate")
     add_sandbox_reference(terminate)
+
+    subparsers.add_parser("terminate-all")
 
     return parser
 
@@ -136,6 +163,31 @@ def print_handles(handles: list[object]) -> None:
     print_table(("Name", "Image", "State", "Sandbox ID"), rows)
 
 
+def print_terminated(handles: list[object]) -> None:
+    if not handles:
+        print("No managed sandboxes found")
+        return
+
+    rows = [
+        (
+            handle.name or handle.tags.get("name", "-"),
+            handle.tags.get("image", "-"),
+            handle.object_id,
+        )
+        for handle in handles
+    ]
+    print_table(("Name", "Image", "Sandbox ID"), rows)
+    print(f"Terminated {len(handles)} managed sandbox(es).")
+
+
+def print_doctor(checks: list[DoctorCheck]) -> None:
+    rows = [
+        (check.name, "ok" if check.ok else "needs help", check.message)
+        for check in checks
+    ]
+    print_table(("Check", "Status", "Message"), rows)
+
+
 def watch_handles(
     manager: ManagedSandbox,
     interval: float,
@@ -183,6 +235,19 @@ def print_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> None:
             + " |"
         )
     print(border)
+
+
+def friendly_error(exc: BaseException) -> str:
+    if isinstance(exc, modal.exception.NotFoundError):
+        return "I could not find that sandbox. Try `uv run may-sandbox list`."
+    if isinstance(exc, modal.exception.AuthError):
+        return "Modal is not logged in. Run `uv run modal token new`."
+    if isinstance(exc, FileNotFoundError):
+        return "Modal CLI was not found. Try running commands with `uv run`."
+    message = str(exc).strip()
+    if message:
+        return message
+    return exc.__class__.__name__
 
 
 if __name__ == "__main__":
