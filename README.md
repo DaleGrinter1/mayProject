@@ -15,6 +15,7 @@ mayproject/
   search.py                    # search-term to URL resolution
   urls.py                      # URL helpers
   workflows/screenshot.py      # product-level screenshot workflow
+  workflows/sandbox.py         # named Modal sandbox workflow
   primitives/browser.py        # reusable browser sandbox primitive
   primitives/python.py         # reusable Python script/code primitive
   primitives/repo.py           # reusable clone-and-run repository primitive
@@ -53,12 +54,31 @@ The current primitive set is:
 Primitives accept an injectable runner factory, so tests can use
 `FakeSandboxRunner` without creating Modal resources.
 
+## Managed sandbox prototype
+
+`may-sandbox` manages a named Modal Sandbox as a small remote computer. It can
+start the sandbox with a package image, attach Modal Volumes, run commands,
+open Modal's interactive shell, and stop the sandbox when finished.
+
+```bash
+uv run may-sandbox create --name devbox --image python --volume my-volume:/workspace/data
+uv run may-sandbox status --name devbox
+uv run may-sandbox exec --name devbox -- python --version
+uv run may-sandbox shell --name devbox
+uv run may-sandbox terminate --name devbox
+```
+
+Volumes use the `volume-name:/absolute/mount/path` format. Missing volumes are
+created with `modal.Volume.from_name(..., create_if_missing=True)`.
+
 ## Usage
 
 ```bash
 uv run python screenshot.py https://example.com
 uv run python screenshot.py "example search term"
 uv run may-screenshot https://example.com
+uv run may-sandbox create --name devbox --image python --volume my-volume:/workspace/data
+uv run may-sandbox shell --name devbox
 uv run may-shell python --version
 uv run may-python ./path/to/script.py
 ```

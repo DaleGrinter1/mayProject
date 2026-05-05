@@ -17,6 +17,7 @@ build-backend = "hatchling.build"
 [project.scripts]
 may-python = "mayproject.cli.python:main"
 may-screenshot = "mayproject.cli.screenshot:main"
+may-sandbox = "mayproject.cli.sandbox:main"
 may-shell = "mayproject.cli.shell:main"
 
 [dependency-groups]

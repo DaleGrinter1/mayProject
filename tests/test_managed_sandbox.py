@@ -1,0 +1,215 @@
+import pytest
+
+from mayproject.sandbox.fake import FakeSandboxRunner
+from mayproject.sandbox.types import CommandResult, SandboxSpec
+from mayproject.workflows import sandbox as sandbox_workflow
+from mayproject.workflows.sandbox import ManagedSandbox, parse_volume_mount
+
+
+class MissingSandbox(Exception):
+    pass
+
+
+class RunnerRecorder:
+    def __init__(self) -> None:
+        self.runners: list[FakeSandboxRunner] = []
+
+    def factory(self, spec: SandboxSpec) -> FakeSandboxRunner:
+        runner = FakeSandboxRunner(spec)
+        self.runners.append(runner)
+        return runner
+
+
+class FakeStream:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def read(self) -> str:
+        return self.text
+
+
+class FakeProcess:
+    def __init__(self, result: CommandResult) -> None:
+        self.returncode: int | None = result.returncode
+        self.stdout = FakeStream(result.stdout)
+        self.stderr = FakeStream(result.stderr)
+
+    def wait(self) -> None:
+        return None
+
+
+class FakeRemoteSandbox:
+    def __init__(
+        self,
+        object_id: str = "sb-123",
+        result: CommandResult | None = None,
+    ) -> None:
+        self.object_id = object_id
+        self.result = result or CommandResult(0, "", "")
+        self.commands: list[tuple[str, ...]] = []
+        self.detached = False
+        self.terminated = False
+
+    def hydrate(self) -> None:
+        return None
+
+    def get_tags(self) -> dict[str, str]:
+        return {"managed": "true"}
+
+    def poll(self) -> int | None:
+        return None
+
+    def exec(self, *command: str) -> FakeProcess:
+        self.commands.append(command)
+        return FakeProcess(self.result)
+
+    def terminate(self, wait: bool = False) -> int | None:
+        self.terminated = wait
+        return 0
+
+    def detach(self) -> None:
+        self.detached = True
+
+
+class FakeConnector:
+    def __init__(self, sandbox: FakeRemoteSandbox | None = None) -> None:
+        self.sandbox = sandbox
+
+    def from_name(self, app_name: str, name: str) -> FakeRemoteSandbox:
+        if self.sandbox is None:
+            raise MissingSandbox(name)
+        return self.sandbox
+
+    def from_id(self, sandbox_id: str) -> FakeRemoteSandbox:
+        if self.sandbox is None:
+            raise MissingSandbox(sandbox_id)
+        return self.sandbox
+
+
+def test_parse_volume_mount_accepts_name_and_absolute_path() -> None:
+    mount = parse_volume_mount("data:/workspace/data")
+
+    assert mount.name == "data"
+    assert mount.mount_path == "/workspace/data"
+    assert mount.create_if_missing
+
+
+@pytest.mark.parametrize("text", ["data", "data:", ":/workspace/data"])
+def test_parse_volume_mount_rejects_missing_parts(text: str) -> None:
+    with pytest.raises(ValueError, match="name:/absolute/path"):
+        parse_volume_mount(text)
+
+
+def test_parse_volume_mount_rejects_relative_mount_path() -> None:
+    with pytest.raises(ValueError, match="absolute"):
+        parse_volume_mount("data:workspace/data")
+
+
+def test_build_volume_map_looks_up_modal_volumes(monkeypatch) -> None:
+    looked_up: list[tuple[str, bool]] = []
+
+    def from_name(name: str, create_if_missing: bool = False) -> object:
+        looked_up.append((name, create_if_missing))
+        return object()
+
+    monkeypatch.setattr(sandbox_workflow.modal.Volume, "from_name", from_name)
+
+    volumes = sandbox_workflow.build_volume_map(
+        [parse_volume_mount("data:/workspace/data")]
+    )
+
+    assert list(volumes) == ["/workspace/data"]
+    assert looked_up == [("data", True)]
+
+
+def test_create_passes_named_sandbox_image_and_volumes(monkeypatch) -> None:
+    recorder = RunnerRecorder()
+    volume = object()
+    monkeypatch.setattr(sandbox_workflow, "get_image", lambda name: f"{name}-image")
+    monkeypatch.setattr(
+        sandbox_workflow,
+        "build_volume_map",
+        lambda mounts: {"/workspace/data": volume},
+    )
+    manager = ManagedSandbox(
+        app_name="test-app",
+        runner_factory=recorder.factory,
+        connector=FakeConnector(),
+        not_found_errors=(MissingSandbox,),
+    )
+
+    handle = manager.create(
+        name="devbox",
+        image_name="python",
+        volume_mounts=[parse_volume_mount("data:/workspace/data")],
+    )
+
+    runner = recorder.runners[0]
+    assert handle.object_id == "fake-devbox"
+    assert runner.closed
+    assert not runner.terminated
+    assert runner.spec.app_name == "test-app"
+    assert runner.spec.name == "devbox"
+    assert runner.spec.image == "python-image"
+    assert runner.spec.volumes == {"/workspace/data": volume}
+    assert runner.spec.tags == {"managed": "true", "name": "devbox"}
+
+
+def test_create_returns_existing_named_sandbox() -> None:
+    remote = FakeRemoteSandbox(object_id="sb-existing")
+    manager = ManagedSandbox(
+        app_name="test-app",
+        runner_factory=RunnerRecorder().factory,
+        connector=FakeConnector(remote),
+        not_found_errors=(MissingSandbox,),
+    )
+
+    handle = manager.create(name="devbox")
+
+    assert handle.object_id == "sb-existing"
+    assert handle.name == "devbox"
+    assert remote.detached
+
+
+def test_exec_rejects_empty_command() -> None:
+    manager = ManagedSandbox(connector=FakeConnector(FakeRemoteSandbox()))
+
+    with pytest.raises(ValueError, match="at least one argument"):
+        manager.exec([], name="devbox")
+
+
+def test_exec_runs_command_and_detaches() -> None:
+    remote = FakeRemoteSandbox(result=CommandResult(7, "out", "err"))
+    manager = ManagedSandbox(connector=FakeConnector(remote))
+
+    result = manager.exec(["python", "--version"], name="devbox")
+
+    assert result == CommandResult(7, "out", "err")
+    assert remote.commands == [("python", "--version")]
+    assert remote.detached
+
+
+def test_shell_resolves_sandbox_and_runs_modal_shell() -> None:
+    remote = FakeRemoteSandbox(object_id="sb-shell")
+    commands: list[list[str]] = []
+    manager = ManagedSandbox(
+        connector=FakeConnector(remote),
+        run_shell_command=lambda command: commands.append(list(command)) or 0,
+    )
+
+    result = manager.shell(name="devbox")
+
+    assert result == 0
+    assert commands == [["modal", "shell", "sb-shell", "--pty"]]
+    assert remote.detached
+
+
+def test_terminate_stops_and_detaches() -> None:
+    remote = FakeRemoteSandbox()
+    manager = ManagedSandbox(connector=FakeConnector(remote))
+
+    result = manager.terminate(name="devbox")
+
+    assert result == 0
+    assert remote.terminated
+    assert remote.detached

@@ -1,10 +1,12 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from mayproject.sandbox.types import CommandResult, SandboxSpec
+from mayproject.sandbox.types import CommandResult, SandboxHandle, SandboxSpec
 
 
 class FakeSandboxRunner:
+    """Pretends to be a remote computer during tests."""
+
     def __init__(
         self,
         spec: SandboxSpec,
@@ -17,11 +19,13 @@ class FakeSandboxRunner:
         self.copied_to_local: list[tuple[str, Path]] = []
         self.commands: list[tuple[str, ...]] = []
         self.closed = False
+        self.terminated = False
 
     def __enter__(self) -> "FakeSandboxRunner":
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.terminated = self.spec.terminate_on_exit
         self.closed = True
 
     def write_text(self, content: str, remote_path: str) -> None:
@@ -39,3 +43,11 @@ class FakeSandboxRunner:
             return self.command_handler(command)
         return CommandResult(returncode=0, stdout="", stderr="")
 
+    def handle(self) -> SandboxHandle:
+        return SandboxHandle(
+            object_id=f"fake-{self.spec.name or 'sandbox'}",
+            app_name=self.spec.app_name,
+            name=self.spec.name,
+            tags=self.spec.tags,
+            returncode=None,
+        )
