@@ -16,16 +16,17 @@
 
 ## Common Commands
 
-- Run the app, once an entry point exists: `uv run python main.py`
+- Screenshot a URL: `uv run may-screenshot https://example.com`
+- Run a command in a sandbox: `uv run may-shell python --version`
+- Run a local Python script in a sandbox: `uv run may-python ./path/to/script.py`
 - Add a dependency: `uv add <package>`
 - Add a development dependency: `uv add --dev <package>`
 - Sync the environment: `uv sync`
 
 ## Testing and Validation
 
-- If tests are added later, document the test command here.
+- Run tests: `uv run pytest`
 - When changing Python code, run the narrowest useful validation command available.
-- If no tests or executable entry point exist yet, say that clearly in the final response.
 
 ## Documentation
 

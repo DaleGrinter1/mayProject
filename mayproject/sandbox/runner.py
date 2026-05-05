@@ -1,25 +1,8 @@
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import modal
 
-
-@dataclass(frozen=True)
-class SandboxSpec:
-    app_name: str = "my-app"
-    command: tuple[str, ...] = ("sleep", "300")
-    image: modal.Image | None = None
-    timeout: int = 600
-    idle_timeout: int = 120
-    verbose: bool = True
-    tags: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    returncode: int
-    stdout: str
-    stderr: str
+from mayproject.sandbox.types import CommandResult, SandboxSpec
 
 
 class ModalSandboxRunner:
