@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 
@@ -564,6 +565,34 @@ def test_cli_list_prints_sandbox_rows(monkeypatch, capsys) -> None:
     assert "browser" in output
 
 
+def test_cli_list_prints_json_rows(monkeypatch, capsys) -> None:
+    handles = [
+        sandbox_workflow.SandboxHandle(
+            object_id="sb-py",
+            app_name="my-app",
+            tags={"name": "pybox", "image": "python"},
+        )
+    ]
+
+    monkeypatch.setattr(sandbox_workflow.ManagedSandbox, "list", lambda self: handles)
+
+    result = main(["list", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert payload == [
+        {
+            "app_name": "my-app",
+            "image": "python",
+            "name": "pybox",
+            "returncode": None,
+            "sandbox_id": "sb-py",
+            "state": "running",
+            "tags": {"name": "pybox", "image": "python"},
+        }
+    ]
+
+
 def test_cli_inspect_by_name_prints_sandbox_details(monkeypatch, capsys) -> None:
     calls: list[tuple[str | None, str | None]] = []
 
@@ -612,6 +641,36 @@ def test_cli_inspect_by_name_prints_sandbox_details(monkeypatch, capsys) -> None
     assert "tests" in output
 
 
+def test_cli_inspect_prints_json(monkeypatch, capsys) -> None:
+    class InspectManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def status(
+            self,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> sandbox_workflow.SandboxHandle:
+            return sandbox_workflow.SandboxHandle(
+                object_id="sb-devbox",
+                app_name=self.app_name,
+                name=name,
+                tags={"managed": "true", "name": "devbox", "image": "dev"},
+            )
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", InspectManager)
+
+    result = main(["inspect", "--name", "devbox", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert payload["sandbox_id"] == "sb-devbox"
+    assert payload["name"] == "devbox"
+    assert payload["image"] == "dev"
+    assert payload["state"] == "running"
+    assert payload["tags"] == {"managed": "true", "name": "devbox", "image": "dev"}
+
+
 def test_cli_inspect_by_id_prints_done_state(monkeypatch, capsys) -> None:
     calls: list[tuple[str | None, str | None]] = []
 
@@ -647,6 +706,33 @@ def test_cli_inspect_by_id_prints_done_state(monkeypatch, capsys) -> None:
     assert "managed" in output
 
 
+def test_cli_status_prints_json(monkeypatch, capsys) -> None:
+    class StatusManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def status(
+            self,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> sandbox_workflow.SandboxHandle:
+            return sandbox_workflow.SandboxHandle(
+                object_id=sandbox_id or "sb-missing",
+                app_name=self.app_name,
+                tags={"name": "devbox", "image": "python"},
+                returncode=3,
+            )
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", StatusManager)
+
+    result = main(["status", "--id", "sb-123", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert payload["sandbox_id"] == "sb-123"
+    assert payload["state"] == "done:3"
+
+
 def test_cli_copy_to_uses_name_and_prints_paths(monkeypatch, capsys) -> None:
     calls: list[tuple[Path, str, str | None, str | None]] = []
 
@@ -672,6 +758,32 @@ def test_cli_copy_to_uses_name_and_prints_paths(monkeypatch, capsys) -> None:
     assert calls == [(Path("local.txt"), "/workspace/local.txt", "devbox", None)]
     assert "local.txt" in output
     assert "/workspace/local.txt" in output
+
+
+def test_cli_put_alias_copies_to_sandbox(monkeypatch, capsys) -> None:
+    calls: list[tuple[Path, str, str | None, str | None]] = []
+
+    class CopyManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def copy_to(
+            self,
+            local_path: Path,
+            remote_path: str,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> None:
+            calls.append((local_path, remote_path, name, sandbox_id))
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", CopyManager)
+
+    result = main(["put", "--name", "devbox", "local.txt", "/workspace/local.txt"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert calls == [(Path("local.txt"), "/workspace/local.txt", "devbox", None)]
+    assert "Copied local.txt to /workspace/local.txt" in output
 
 
 def test_cli_copy_from_uses_id_and_prints_paths(monkeypatch, capsys) -> None:
@@ -703,6 +815,32 @@ def test_cli_copy_from_uses_id_and_prints_paths(monkeypatch, capsys) -> None:
     assert "result.txt" in output
 
 
+def test_cli_get_alias_copies_from_sandbox(monkeypatch, capsys) -> None:
+    calls: list[tuple[str, Path, str | None, str | None]] = []
+
+    class CopyManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def copy_from(
+            self,
+            remote_path: str,
+            local_path: Path,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> None:
+            calls.append((remote_path, local_path, name, sandbox_id))
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", CopyManager)
+
+    result = main(["get", "--id", "sb-123", "/workspace/result.txt", "result.txt"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert calls == [("/workspace/result.txt", Path("result.txt"), None, "sb-123")]
+    assert "Copied /workspace/result.txt to result.txt" in output
+
+
 def test_cli_screenshot_uses_name_and_prints_saved_paths(
     tmp_path,
     monkeypatch,
@@ -719,6 +857,7 @@ def test_cli_screenshot_uses_name_and_prints_saved_paths(
         def screenshot(
             self,
             url: str,
+            output_dir: Path = Path("artifacts/screenshots"),
             name: str | None = None,
             sandbox_id: str | None = None,
         ) -> sandbox_workflow.ScreenshotResult:
@@ -737,6 +876,51 @@ def test_cli_screenshot_uses_name_and_prints_saved_paths(
     assert str(text_path.resolve()) in output
 
 
+def test_cli_screenshot_accepts_output_dir(monkeypatch, capsys) -> None:
+    calls: list[tuple[str, Path, str | None, str | None]] = []
+
+    class ScreenshotManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def screenshot(
+            self,
+            url: str,
+            output_dir: Path = Path("artifacts/screenshots"),
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> sandbox_workflow.ScreenshotResult:
+            calls.append((url, output_dir, name, sandbox_id))
+            return sandbox_workflow.ScreenshotResult(
+                url,
+                output_dir / "example.png",
+                output_dir / "example.txt",
+            )
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", ScreenshotManager)
+
+    result = main(
+        [
+            "screenshot",
+            "--name",
+            "devbox",
+            "--output-dir",
+            "artifacts/custom-shots",
+            "https://example.com",
+        ]
+    )
+
+    assert result == 0
+    assert calls == [
+        (
+            "https://example.com",
+            Path("artifacts/custom-shots"),
+            "devbox",
+            None,
+        )
+    ]
+
+
 def test_cli_screenshot_uses_id_and_resolves_search_terms(monkeypatch, capsys) -> None:
     calls: list[tuple[str, str | None, str | None]] = []
 
@@ -747,6 +931,7 @@ def test_cli_screenshot_uses_id_and_resolves_search_terms(monkeypatch, capsys) -
         def screenshot(
             self,
             url: str,
+            output_dir: Path = Path("artifacts/screenshots"),
             name: str | None = None,
             sandbox_id: str | None = None,
         ) -> sandbox_workflow.ScreenshotResult:

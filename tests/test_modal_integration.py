@@ -42,3 +42,26 @@ def test_modal_sandbox_can_copy_remote_text_file_to_local() -> None:
         if local_path.exists():
             local_path.unlink()
         manager.terminate(name=name)
+
+
+def test_modal_sandbox_can_copy_local_script_and_execute_it() -> None:
+    """Copies a local script into a real Modal sandbox and runs it."""
+
+    name = f"put-test-{uuid4().hex[:8]}"
+    ARTIFACTS_DIR.mkdir(exist_ok=True)
+    local_script = ARTIFACTS_DIR / f"{name}.py"
+    remote_script = "/tmp/mayproject-put-test.py"
+    manager = ManagedSandbox()
+
+    try:
+        local_script.write_text("print('hello from copied script')\n", encoding="utf-8")
+        manager.create(name=name, image_name="python", timeout=300, idle_timeout=60)
+        manager.copy_to(local_script, remote_script, name=name)
+        result = manager.exec(["python", remote_script], name=name)
+
+        assert result.returncode == 0
+        assert result.stdout.strip() == "hello from copied script"
+    finally:
+        if local_script.exists():
+            local_script.unlink()
+        manager.terminate(name=name)

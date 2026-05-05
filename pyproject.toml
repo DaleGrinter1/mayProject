@@ -30,3 +30,7 @@ dev = [
 pythonpath = [
     ".",
 ]
+
+[tool.mayproject]
+app_name = "my-app"
+artifacts_dir = "artifacts"

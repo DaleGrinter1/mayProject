@@ -1,33 +1,33 @@
 # mayproject
 
-Create a Modal sandbox that opens a URL with Playwright/Chromium and copies a
-screenshot and text observation back into the local `artifacts/screenshots/`
-folder.
+`mayproject` manages Modal sandboxes as small remote computers. It supports
+one-shot commands for quick work and `may-sandbox` commands for named,
+longer-lived sandboxes.
 
-## Project structure
+Generated files belong under `artifacts/`. Screenshots use
+`artifacts/screenshots/` by default.
 
-The project is now split into a small package so sandbox behavior can scale
-without keeping everything in one script:
+## Project Layout
 
 ```text
-screenshot.py                  # thin CLI entry point
+screenshot.py                  # thin compatibility wrapper for may-screenshot
 mayproject/
   cli/                         # console script entry points
+  config.py                    # pyproject.toml settings
   search.py                    # search-term to URL resolution
   urls.py                      # URL helpers
   workflows/doctor.py          # local setup checks
-  workflows/screenshot.py      # product-level screenshot workflow
+  workflows/screenshot.py      # one-shot screenshot workflow
   workflows/sandbox.py         # named Modal sandbox workflow
   primitives/browser.py        # reusable browser sandbox primitive
   primitives/python.py         # reusable Python script/code primitive
   primitives/repo.py           # reusable clone-and-run repository primitive
   primitives/shell.py          # reusable shell command sandbox primitive
-  primitives/scripts/          # scripts copied into sandbox filesystems
   sandbox/fake.py              # fake runner for local primitive tests
   sandbox/images.py            # Modal image definitions
   sandbox/runner.py            # Modal sandbox lifecycle and command runner
   sandbox/types.py             # Pydantic models and shared runner protocol
-tests/                         # local tests that avoid remote Modal resources
+tests/                         # local tests plus opt-in Modal integration tests
 ```
 
 Runtime dependencies are Modal for remote computers and Pydantic for shared
@@ -43,23 +43,20 @@ CLI / future API / future Modal Function
   -> Modal Sandbox
 ```
 
-This keeps Modal-specific lifecycle code in one place while allowing new
-primitives, such as Python execution or repository test runners, to reuse the
-same sandbox runner.
+## Configuration
 
-## Primitives
+Defaults live in `pyproject.toml`:
 
-The current primitive set is:
+```toml
+[tool.mayproject]
+app_name = "my-app"
+artifacts_dir = "artifacts"
+```
 
-- `BrowserPrimitive`: captures a page screenshot and text observation with Playwright.
-- `ShellPrimitive`: runs a command in a Python Modal sandbox.
-- `PythonPrimitive`: copies or writes Python code into a sandbox and runs it.
-- `RepoPrimitive`: clones a git repository and runs a command inside it.
+The `--app-name` flag overrides the configured app name for `may-sandbox`
+commands.
 
-Primitives accept an injectable runner factory, so tests can use
-`FakeSandboxRunner` without creating Modal resources.
-
-## One-shot commands
+## One-Shot Commands
 
 Use one-shot commands when you want a temporary sandbox to do one job and then
 go away:
@@ -71,22 +68,14 @@ uv run may-shell python --version
 uv run may-python ./path/to/script.py
 ```
 
-`may-screenshot` screenshots the input directly when it is a valid `http` or
-`https` URL. Otherwise, it searches DuckDuckGo and screenshots the first result.
-Each run saves a `.png` screenshot and a matching `.txt` file with the page URL,
-title, visible text, links, and buttons in `artifacts/screenshots/`.
+`may-screenshot` screenshots a valid `http` or `https` URL directly. Otherwise,
+it searches DuckDuckGo and screenshots the first result. Each run saves a PNG
+and matching text observation in `artifacts/screenshots/`.
 
-The root `screenshot.py` file is a thin compatibility wrapper around
-`may-screenshot`.
+## Managed Sandboxes
 
-## Managed sandboxes
-
-`may-sandbox` manages a named Modal Sandbox as a small remote computer. It can
-start the sandbox with a package image, attach Modal Volumes, run commands,
-copy files, take screenshots, open Modal's interactive shell, and stop the
-sandbox when finished.
-
-Quickstart:
+Use `may-sandbox` when you want a named remote computer that can run repeated
+commands, hold copied files, attach volumes, or open an interactive shell.
 
 ```bash
 uv run may-sandbox doctor
@@ -96,13 +85,44 @@ uv run may-sandbox list --watch
 uv run may-sandbox status --name devbox
 uv run may-sandbox inspect --name devbox
 uv run may-sandbox exec --name devbox -- python --version
-uv run may-sandbox copy-to --name devbox ./script.py /workspace/script.py
-uv run may-sandbox copy-from --name devbox /workspace/result.txt ./result.txt
 uv run may-sandbox shell --name devbox
 uv run may-sandbox terminate --name devbox
 ```
 
-Screenshots can also run inside an existing managed sandbox:
+To stop every sandbox started by this project:
+
+```bash
+uv run may-sandbox terminate-all
+```
+
+## Files
+
+Copy local files into a sandbox:
+
+```bash
+uv run may-sandbox copy-to --name devbox ./script.py /workspace/script.py
+uv run may-sandbox put --name devbox ./script.py /workspace/script.py
+```
+
+Copy remote files back into `artifacts/`:
+
+```bash
+mkdir -p artifacts
+uv run may-sandbox copy-from --name devbox /tmp/result.txt artifacts/result.txt
+uv run may-sandbox get --id sb-... /tmp/result.txt artifacts/result.txt
+```
+
+`put` is an alias for `copy-to`; `get` is an alias for `copy-from`.
+
+## Screenshots
+
+Run a screenshot in a new temporary sandbox:
+
+```bash
+uv run may-screenshot https://example.com
+```
+
+Run a screenshot inside an existing managed sandbox:
 
 ```bash
 uv run may-sandbox create --name browserbox --image browser
@@ -113,24 +133,27 @@ uv run may-sandbox screenshot --id sb-... "example search term"
 Managed screenshots need a sandbox created with the `browser` image because
 they use Playwright and Chromium.
 
-Generated files copied back from sandboxes should go in the ignored `artifacts/`
-folder. Screenshots use `artifacts/screenshots/` by default.
+Choose a different local output folder:
 
 ```bash
-mkdir -p artifacts
-uv run may-sandbox copy-from --name devbox /tmp/result.txt artifacts/result.txt
+uv run may-sandbox screenshot --name browserbox --output-dir artifacts/custom-shots https://example.com
 ```
 
-To stop every sandbox started by this project:
+## Structured Output
+
+Use `--json` with commands that describe sandboxes:
 
 ```bash
-uv run may-sandbox terminate-all
+uv run may-sandbox list --json
+uv run may-sandbox status --name devbox --json
+uv run may-sandbox inspect --id sb-... --json
 ```
 
-Volumes use the `volume-name:/absolute/mount/path` format. Missing volumes are
-created with `modal.Volume.from_name(..., create_if_missing=True)`.
+This is useful for scripts and future automation.
 
-Available images:
+## Images
+
+Available sandbox images:
 
 - `python`: a small Python 3.13 image.
 - `browser`: the Python image with Playwright and Chromium.
@@ -140,16 +163,21 @@ The first run may take longer while Modal builds each sandbox image.
 
 ## Testing
 
+Run the local test suite:
+
 ```bash
 uv run pytest
 ```
 
-The current tests validate local parsing, workflow composition, primitive
-commands, and fake-runner behavior without launching Modal sandboxes.
+The default tests validate parsing, workflow composition, primitive commands,
+Pydantic models, config loading, and fake-runner behavior without launching
+Modal sandboxes.
 
-To run the real Modal integration test that creates a sandbox, writes a text
-file, and copies it back through `artifacts/`:
+Run the opt-in real Modal integration tests:
 
 ```bash
 MAYPROJECT_RUN_MODAL_TESTS=1 uv run pytest tests/test_modal_integration.py
 ```
+
+Those tests create real sandboxes, copy files in and out through `artifacts/`,
+and terminate the sandboxes afterward.

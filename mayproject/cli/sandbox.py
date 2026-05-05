@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -6,6 +7,7 @@ from time import sleep
 
 import modal
 
+from mayproject.config import load_config
 from mayproject.search import first_search_result
 from mayproject.urls import is_valid_url
 from mayproject.workflows.doctor import DoctorCheck, run_doctor
@@ -22,11 +24,12 @@ def main(argv: list[str] | None = None) -> int:
         The command's finish code.
     """
 
-    parser = build_parser()
+    config = load_config()
+    parser = build_parser(default_app_name=config.app_name)
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     manager = ManagedSandbox(app_name=args.app_name)
     try:
-        return run_command(args, manager)
+        return run_command(args, manager, config.artifacts_dir)
     except KeyboardInterrupt:
         print("\nStopped.", file=sys.stderr)
         return 130
@@ -35,12 +38,17 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
-def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
+def run_command(
+    args: argparse.Namespace,
+    manager: ManagedSandbox,
+    artifacts_dir: Path = Path("artifacts"),
+) -> int:
     """Runs the command the person chose.
 
     Args:
         args: Parsed command-line choices.
         manager: The remote computer manager.
+        artifacts_dir: The local folder for generated and copied files.
 
     Returns:
         The command's finish code.
@@ -58,18 +66,30 @@ def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
         return 0
 
     if args.action == "status":
-        print_handle("Sandbox status", manager.status(name=args.name, sandbox_id=args.id))
+        handle = manager.status(name=args.name, sandbox_id=args.id)
+        if args.json:
+            print_json(handle_payload(handle))
+        else:
+            print_handle("Sandbox status", handle)
         return 0
 
     if args.action == "inspect":
-        print_inspection(manager.status(name=args.name, sandbox_id=args.id))
+        handle = manager.status(name=args.name, sandbox_id=args.id)
+        if args.json:
+            print_json(handle_payload(handle))
+        else:
+            print_inspection(handle)
         return 0
 
     if args.action == "list":
         if args.watch:
             watch_handles(manager, args.interval)
             return 0
-        print_handles(manager.list())
+        handles = manager.list()
+        if args.json:
+            print_json([handle_payload(handle) for handle in handles])
+        else:
+            print_handles(handles)
         return 0
 
     if args.action == "doctor":
@@ -85,7 +105,7 @@ def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
             print(result.stderr, end="", file=sys.stderr)
         return result.returncode
 
-    if args.action == "copy-to":
+    if args.action in ("copy-to", "put"):
         manager.copy_to(
             Path(args.local_path),
             args.remote_path,
@@ -95,7 +115,7 @@ def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
         print(f"Copied {args.local_path} to {args.remote_path}")
         return 0
 
-    if args.action == "copy-from":
+    if args.action in ("copy-from", "get"):
         manager.copy_from(
             args.remote_path,
             Path(args.local_path),
@@ -108,8 +128,14 @@ def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
     if args.action == "screenshot":
         text = " ".join(args.target)
         url = text if is_valid_url(text) else first_search_result(text)
+        output_dir = Path(args.output_dir) if args.output_dir else artifacts_dir / "screenshots"
         print(f"Screenshot target: {url}")
-        result = manager.screenshot(url, name=args.name, sandbox_id=args.id)
+        result = manager.screenshot(
+            url,
+            output_dir=output_dir,
+            name=args.name,
+            sandbox_id=args.id,
+        )
         print(f"Screenshot saved to {result.image_path.resolve()}")
         print(f"Observation saved to {result.text_path.resolve()}")
         return 0
@@ -129,15 +155,18 @@ def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
     raise ValueError("Unknown sandbox action")
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(default_app_name: str = "my-app") -> argparse.ArgumentParser:
     """Builds the command line choices for the remote computer.
+
+    Args:
+        default_app_name: The Modal app name to use when no flag is passed.
 
     Returns:
         The command-line parser.
     """
 
     parser = argparse.ArgumentParser(prog="may-sandbox")
-    parser.add_argument("--app-name", default="my-app")
+    parser.add_argument("--app-name", default=default_app_name)
     subparsers = parser.add_subparsers(dest="action", required=True)
 
     create = subparsers.add_parser("create")
@@ -149,13 +178,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = subparsers.add_parser("status")
     add_sandbox_reference(status)
+    status.add_argument("--json", action="store_true")
 
     inspect = subparsers.add_parser("inspect")
     add_sandbox_reference(inspect)
+    inspect.add_argument("--json", action="store_true")
 
     list_parser = subparsers.add_parser("list")
     list_parser.add_argument("--watch", action="store_true")
     list_parser.add_argument("--interval", type=positive_interval, default=2.0)
+    list_parser.add_argument("--json", action="store_true")
 
     subparsers.add_parser("doctor")
 
@@ -168,13 +200,24 @@ def build_parser() -> argparse.ArgumentParser:
     copy_to.add_argument("local_path")
     copy_to.add_argument("remote_path")
 
+    put = subparsers.add_parser("put")
+    add_sandbox_reference(put)
+    put.add_argument("local_path")
+    put.add_argument("remote_path")
+
     copy_from = subparsers.add_parser("copy-from")
     add_sandbox_reference(copy_from)
     copy_from.add_argument("remote_path")
     copy_from.add_argument("local_path")
 
+    get = subparsers.add_parser("get")
+    add_sandbox_reference(get)
+    get.add_argument("remote_path")
+    get.add_argument("local_path")
+
     screenshot = subparsers.add_parser("screenshot")
     add_sandbox_reference(screenshot)
+    screenshot.add_argument("--output-dir")
     screenshot.add_argument("target", nargs="+")
 
     shell = subparsers.add_parser("shell")
@@ -283,6 +326,38 @@ def sandbox_state(handle: object) -> str:
     """
 
     return "running" if handle.returncode is None else f"done:{handle.returncode}"
+
+
+def handle_payload(handle: object) -> dict[str, object]:
+    """Builds a structured view of one remote computer.
+
+    Args:
+        handle: The remote computer details.
+
+    Returns:
+        A plain dictionary for JSON output.
+    """
+
+    name = handle.name or handle.tags.get("name")
+    return {
+        "name": name,
+        "sandbox_id": handle.object_id,
+        "app_name": handle.app_name,
+        "image": handle.tags.get("image"),
+        "state": sandbox_state(handle),
+        "returncode": handle.returncode,
+        "tags": dict(handle.tags),
+    }
+
+
+def print_json(payload: object) -> None:
+    """Prints structured output as formatted JSON.
+
+    Args:
+        payload: The JSON-compatible value to print.
+    """
+
+    print(json.dumps(payload, indent=2, sort_keys=True))
 
 
 def print_inspection(handle: object) -> None:
