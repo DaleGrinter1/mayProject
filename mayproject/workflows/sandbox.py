@@ -235,7 +235,7 @@ class ManagedSandbox:
     def screenshot(
         self,
         url: str,
-        output_dir: Path = Path("screenshots"),
+        output_dir: Path = Path("artifacts/screenshots"),
         name: str | None = None,
         sandbox_id: str | None = None,
     ) -> ScreenshotResult:

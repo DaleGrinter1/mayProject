@@ -3,4 +3,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 .DS_Store
-screenshots/
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/screenshots/
+artifacts/screenshots/*
+!artifacts/screenshots/.gitkeep

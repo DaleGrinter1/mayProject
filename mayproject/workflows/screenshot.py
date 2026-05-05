@@ -21,7 +21,7 @@ class ScreenshotResult:
     text_path: Path
 
 
-def screenshot_path(url: str, output_dir: Path = Path("screenshots")) -> Path:
+def screenshot_path(url: str, output_dir: Path = Path("artifacts/screenshots")) -> Path:
     """Chooses a safe file name for a screenshot.
 
     Args:
@@ -32,7 +32,7 @@ def screenshot_path(url: str, output_dir: Path = Path("screenshots")) -> Path:
         The local screenshot file path.
     """
 
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     host = urlparse(url).netloc or "screenshot"
     safe_host = "".join(c if c.isalnum() or c in ".-" else "-" for c in host)
@@ -41,7 +41,7 @@ def screenshot_path(url: str, output_dir: Path = Path("screenshots")) -> Path:
 
 def capture_url(
     url: str,
-    output_dir: Path = Path("screenshots"),
+    output_dir: Path = Path("artifacts/screenshots"),
     browser: BrowserPrimitive | None = None,
 ) -> ScreenshotResult:
     """Takes a screenshot and saves notes about the page.

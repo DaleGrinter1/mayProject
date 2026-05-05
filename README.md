@@ -1,7 +1,8 @@
 # mayproject
 
 Create a Modal sandbox that opens a URL with Playwright/Chromium and copies a
-screenshot and text observation back into the local `screenshots/` folder.
+screenshot and text observation back into the local `artifacts/screenshots/`
+folder.
 
 ## Project structure
 
@@ -73,7 +74,7 @@ uv run may-python ./path/to/script.py
 `may-screenshot` screenshots the input directly when it is a valid `http` or
 `https` URL. Otherwise, it searches DuckDuckGo and screenshots the first result.
 Each run saves a `.png` screenshot and a matching `.txt` file with the page URL,
-title, visible text, links, and buttons.
+title, visible text, links, and buttons in `artifacts/screenshots/`.
 
 The root `screenshot.py` file is a thin compatibility wrapper around
 `may-screenshot`.
@@ -112,6 +113,14 @@ uv run may-sandbox screenshot --id sb-... "example search term"
 Managed screenshots need a sandbox created with the `browser` image because
 they use Playwright and Chromium.
 
+Generated files copied back from sandboxes should go in the ignored `artifacts/`
+folder. Screenshots use `artifacts/screenshots/` by default.
+
+```bash
+mkdir -p artifacts
+uv run may-sandbox copy-from --name devbox /tmp/result.txt artifacts/result.txt
+```
+
 To stop every sandbox started by this project:
 
 ```bash
@@ -137,3 +146,10 @@ uv run pytest
 
 The current tests validate local parsing, workflow composition, primitive
 commands, and fake-runner behavior without launching Modal sandboxes.
+
+To run the real Modal integration test that creates a sandbox, writes a text
+file, and copies it back through `artifacts/`:
+
+```bash
+MAYPROJECT_RUN_MODAL_TESTS=1 uv run pytest tests/test_modal_integration.py
+```

@@ -753,8 +753,8 @@ def test_cli_screenshot_uses_id_and_resolves_search_terms(monkeypatch, capsys) -
             calls.append((url, name, sandbox_id))
             return sandbox_workflow.ScreenshotResult(
                 url,
-                Path("screenshots/example.png"),
-                Path("screenshots/example.txt"),
+                Path("artifacts/screenshots/example.png"),
+                Path("artifacts/screenshots/example.txt"),
             )
 
     monkeypatch.setattr(sandbox_cli, "ManagedSandbox", ScreenshotManager)
