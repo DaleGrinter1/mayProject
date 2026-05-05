@@ -33,6 +33,14 @@
 - Keep `README.md` aligned with the actual project behavior.
 - Document setup steps when adding dependencies, commands, or environment variables.
 
+## Additional Agent Context
+
+- Longer context for agents lives in `docs/agents/`.
+- Start with `docs/agents/README.md` when a task needs more background.
+- Use `docs/agents/architecture.md` for layering and ownership guidance.
+- Use `docs/agents/workflows.md` for command behavior and user-facing flows.
+- Use `docs/agents/testing.md` for local and opt-in Modal validation guidance.
+
 ## Codex Notes
 
 - This file follows OpenAI Codex's `AGENTS.md` project-instructions convention.

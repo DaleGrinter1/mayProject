@@ -10,7 +10,6 @@ Generated files belong under `artifacts/`. Screenshots use
 ## Project Layout
 
 ```text
-screenshot.py                  # thin compatibility wrapper for may-screenshot
 mayproject/
   cli/                         # console script entry points
   config.py                    # pyproject.toml settings
