@@ -69,7 +69,10 @@ class ManagedSandbox:
     def list(self) -> list[SandboxHandle]:
         """Shows the remote computers this project started."""
 
-        return asyncio.run(self._list())
+        sandboxes = self.connector.list(tags={"managed": "true"})
+        if hasattr(sandboxes, "__aiter__"):
+            return asyncio.run(self._list_async(sandboxes))
+        return list_handles(sandboxes, self.app_name)
 
     def status(self, name: str | None = None, sandbox_id: str | None = None) -> SandboxHandle:
         """Shows whether the remote computer is still running."""
@@ -130,16 +133,9 @@ class ManagedSandbox:
         except self.not_found_errors:
             return None
 
-    async def _list(self) -> list[SandboxHandle]:
+    async def _list_async(self, sandboxes: object) -> list[SandboxHandle]:
         handles: list[SandboxHandle] = []
-        sandboxes = self.connector.list(tags={"managed": "true"})
-        if hasattr(sandboxes, "__aiter__"):
-            async for sandbox in sandboxes:
-                handles.append(handle_from_sandbox(sandbox, self.app_name))
-                sandbox.detach()
-            return handles
-
-        for sandbox in sandboxes:
+        async for sandbox in sandboxes:
             handles.append(handle_from_sandbox(sandbox, self.app_name))
             sandbox.detach()
         return handles
@@ -175,6 +171,16 @@ def build_volume_map(
             create_if_missing=mount.create_if_missing,
         )
     return volumes
+
+
+def list_handles(sandboxes: Iterable[modal.Sandbox], app_name: str) -> list[SandboxHandle]:
+    """Returns the remote computers in a simple list."""
+
+    handles: list[SandboxHandle] = []
+    for sandbox in sandboxes:
+        handles.append(handle_from_sandbox(sandbox, app_name))
+        sandbox.detach()
+    return handles
 
 
 def handle_from_sandbox(

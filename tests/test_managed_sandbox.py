@@ -1,6 +1,6 @@
 import pytest
 
-from mayproject.cli.sandbox import main
+from mayproject.cli.sandbox import clear_terminal, main, positive_interval, watch_handles
 from mayproject.sandbox.fake import FakeSandboxRunner
 from mayproject.sandbox.types import CommandResult, SandboxSpec
 from mayproject.workflows import sandbox as sandbox_workflow
@@ -299,3 +299,72 @@ def test_cli_list_prints_sandbox_rows(monkeypatch, capsys) -> None:
     assert "python" in output
     assert "browserbox" in output
     assert "browser" in output
+
+
+def test_watch_handles_refreshes_until_keyboard_interrupt(capsys) -> None:
+    class ListingManager:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def list(self) -> list[object]:
+            self.calls += 1
+            return [
+                sandbox_workflow.SandboxHandle(
+                    object_id="sb-py",
+                    app_name="my-app",
+                    tags={"name": "pybox", "image": "python"},
+                )
+            ]
+
+    manager = ListingManager()
+    clears: list[str] = []
+
+    def stop_after_one_sleep(interval: float) -> None:
+        raise KeyboardInterrupt
+
+    watch_handles(
+        manager,
+        interval=0.5,
+        sleep_fn=stop_after_one_sleep,
+        clear_screen=lambda: clears.append("clear"),
+    )
+
+    output = capsys.readouterr().out
+    assert manager.calls == 1
+    assert clears == ["clear"]
+    assert "pybox" in output
+    assert "Refreshing every 0.5s" in output
+    assert "Stopped watching sandboxes." in output
+
+
+def test_watch_handles_clears_after_fetching_list() -> None:
+    events: list[str] = []
+
+    class ListingManager:
+        def list(self) -> list[object]:
+            events.append("list")
+            return []
+
+    def stop_after_one_sleep(interval: float) -> None:
+        events.append("sleep")
+        raise KeyboardInterrupt
+
+    watch_handles(
+        ListingManager(),
+        interval=1,
+        sleep_fn=stop_after_one_sleep,
+        clear_screen=lambda: events.append("clear"),
+    )
+
+    assert events == ["list", "clear", "sleep"]
+
+
+def test_positive_interval_rejects_zero() -> None:
+    with pytest.raises(Exception, match="greater than zero"):
+        positive_interval("0")
+
+
+def test_clear_terminal_uses_full_screen_clear(capsys) -> None:
+    clear_terminal()
+
+    assert capsys.readouterr().out == "\033[2J\033[3J\033[H"

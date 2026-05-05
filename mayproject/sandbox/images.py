@@ -15,9 +15,20 @@ def browser_image() -> modal.Image:
     )
 
 
+def dev_image() -> modal.Image:
+    """Builds a remote computer with everyday coding tools."""
+
+    return (
+        python_image()
+        .apt_install("bash", "curl", "git")
+        .pip_install("uv")
+    )
+
+
 def get_image(name: ImageName) -> modal.Image:
     image_builders = {
         "python": python_image,
         "browser": browser_image,
+        "dev": dev_image,
     }
     return image_builders[name]()

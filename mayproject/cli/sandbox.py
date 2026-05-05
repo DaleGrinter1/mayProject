@@ -1,5 +1,7 @@
 import argparse
 import sys
+from collections.abc import Callable
+from time import sleep
 
 from mayproject.workflows.sandbox import ManagedSandbox, parse_volume_mount
 
@@ -27,6 +29,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.action == "list":
+        if args.watch:
+            watch_handles(manager, args.interval)
+            return 0
         print_handles(manager.list())
         return 0
 
@@ -59,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     create = subparsers.add_parser("create")
     create.add_argument("--name", required=True)
-    create.add_argument("--image", choices=["python", "browser"], default="python")
+    create.add_argument("--image", choices=["python", "browser", "dev"], default="python")
     create.add_argument("--volume", action="append", default=[])
     create.add_argument("--timeout", type=int, default=600)
     create.add_argument("--idle-timeout", type=int, default=120)
@@ -67,7 +72,9 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("status")
     add_sandbox_reference(status)
 
-    subparsers.add_parser("list")
+    list_parser = subparsers.add_parser("list")
+    list_parser.add_argument("--watch", action="store_true")
+    list_parser.add_argument("--interval", type=positive_interval, default=2.0)
 
     execute = subparsers.add_parser("exec")
     add_sandbox_reference(execute)
@@ -92,6 +99,13 @@ def strip_command_separator(command: list[str]) -> list[str]:
     if command[:1] == ["--"]:
         return command[1:]
     return command
+
+
+def positive_interval(text: str) -> float:
+    value = float(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("interval must be greater than zero")
+    return value
 
 
 def print_handle(label: str, handle: object) -> None:
@@ -120,6 +134,33 @@ def print_handles(handles: list[object]) -> None:
         for handle in handles
     ]
     print_table(("Name", "Image", "State", "Sandbox ID"), rows)
+
+
+def watch_handles(
+    manager: ManagedSandbox,
+    interval: float,
+    sleep_fn: Callable[[float], object] | None = None,
+    clear_screen: Callable[[], object] | None = None,
+) -> None:
+    """Refreshes the remote computer list until you stop it."""
+
+    sleep_for = sleep_fn or sleep
+    clear = clear_screen or clear_terminal
+
+    try:
+        while True:
+            handles = manager.list()
+            clear()
+            print_handles(handles)
+            print(f"\nRefreshing every {interval:g}s. Press Ctrl+C to stop.")
+            sleep_for(interval)
+    except KeyboardInterrupt:
+        print("\nStopped watching sandboxes.")
+
+
+def clear_terminal() -> None:
+    sys.stdout.write("\033[2J\033[3J\033[H")
+    sys.stdout.flush()
 
 
 def print_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> None:

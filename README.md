@@ -62,7 +62,9 @@ open Modal's interactive shell, and stop the sandbox when finished.
 
 ```bash
 uv run may-sandbox create --name devbox --image python --volume my-volume:/workspace/data
+uv run may-sandbox create --name toolbox --image dev
 uv run may-sandbox list
+uv run may-sandbox list --watch
 uv run may-sandbox status --name devbox
 uv run may-sandbox exec --name devbox -- python --version
 uv run may-sandbox shell --name devbox
@@ -72,6 +74,12 @@ uv run may-sandbox terminate --name devbox
 Volumes use the `volume-name:/absolute/mount/path` format. Missing volumes are
 created with `modal.Volume.from_name(..., create_if_missing=True)`.
 
+Available images:
+
+- `python`: a small Python 3.13 image.
+- `browser`: the Python image with Playwright and Chromium.
+- `dev`: the Python image with everyday coding tools like `git`, `curl`, and `uv`.
+
 ## Usage
 
 ```bash
@@ -79,7 +87,9 @@ uv run python screenshot.py https://example.com
 uv run python screenshot.py "example search term"
 uv run may-screenshot https://example.com
 uv run may-sandbox create --name devbox --image python --volume my-volume:/workspace/data
+uv run may-sandbox create --name toolbox --image dev
 uv run may-sandbox list
+uv run may-sandbox list --watch --interval 5
 uv run may-sandbox shell --name devbox
 uv run may-shell python --version
 uv run may-python ./path/to/script.py

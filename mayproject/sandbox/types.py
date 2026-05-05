@@ -7,7 +7,7 @@ from typing import Protocol
 import modal
 
 
-ImageName = Literal["python", "browser"]
+ImageName = Literal["python", "browser", "dev"]
 
 
 @dataclass(frozen=True)
