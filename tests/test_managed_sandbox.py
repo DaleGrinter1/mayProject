@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from mayproject.cli import sandbox as sandbox_cli
@@ -15,110 +17,283 @@ from mayproject.workflows.sandbox import ManagedSandbox, parse_volume_mount
 
 
 class MissingSandbox(Exception):
+    """Stands in for Modal's missing sandbox error in tests."""
+
     pass
 
 
 class RunnerRecorder:
+    """Keeps fake runners so tests can inspect how they were used."""
+
     def __init__(self) -> None:
+        """Creates an empty runner history."""
+
         self.runners: list[FakeSandboxRunner] = []
 
     def factory(self, spec: SandboxSpec) -> FakeSandboxRunner:
+        """Builds and records one fake sandbox runner.
+
+        Args:
+            spec: The remote computer settings passed by the workflow.
+
+        Returns:
+            A fake runner for the test to inspect later.
+        """
+
         runner = FakeSandboxRunner(spec)
         self.runners.append(runner)
         return runner
 
 
 class FakeStream:
+    """Acts like a Modal stream that returns fixed text."""
+
     def __init__(self, text: str) -> None:
+        """Stores the text the stream should return.
+
+        Args:
+            text: The stream contents.
+        """
+
         self.text = text
 
     def read(self) -> str:
+        """Returns the stored stream contents.
+
+        Returns:
+            The stream text.
+        """
+
         return self.text
 
 
 class FakeProcess:
+    """Acts like a Modal process result."""
+
     def __init__(self, result: CommandResult) -> None:
+        """Builds a fake process from a command result.
+
+        Args:
+            result: The command result to expose through process fields.
+        """
+
         self.returncode: int | None = result.returncode
         self.stdout = FakeStream(result.stdout)
         self.stderr = FakeStream(result.stderr)
 
     def wait(self) -> None:
+        """Pretends to wait for the remote process to finish."""
+
         return None
 
 
+class FakeFilesystem:
+    """Acts like a Modal sandbox filesystem in tests."""
+
+    def __init__(self) -> None:
+        """Creates empty copy histories."""
+
+        self.copied_from_local: list[tuple[Path, str]] = []
+        self.copied_to_local: list[tuple[str, Path]] = []
+
+    def copy_from_local(self, local_path: Path, remote_path: str) -> None:
+        """Records a local-to-remote copy.
+
+        Args:
+            local_path: The local file path.
+            remote_path: The remote file path.
+        """
+
+        self.copied_from_local.append((local_path, remote_path))
+
+    def copy_to_local(self, remote_path: str, local_path: Path) -> None:
+        """Records a remote-to-local copy.
+
+        Args:
+            remote_path: The remote file path.
+            local_path: The local file path.
+        """
+
+        self.copied_to_local.append((remote_path, local_path))
+
+
 class FakeRemoteSandbox:
+    """Acts like a Modal sandbox for managed sandbox tests."""
+
     def __init__(
         self,
         object_id: str = "sb-123",
         result: CommandResult | None = None,
         tags: dict[str, str] | None = None,
     ) -> None:
+        """Creates a fake remote computer.
+
+        Args:
+            object_id: The fake Modal sandbox ID.
+            result: The command result to return from remote exec calls.
+            tags: The fake labels attached to the sandbox.
+        """
+
         self.object_id = object_id
-        self.result = result or CommandResult(0, "", "")
+        self.result = result or CommandResult(returncode=0, stdout="", stderr="")
         self.tags = tags or {"managed": "true"}
+        self.filesystem = FakeFilesystem()
         self.commands: list[tuple[str, ...]] = []
         self.detached = False
         self.terminated = False
 
     def hydrate(self) -> None:
+        """Pretends to load the remote computer details."""
+
         return None
 
     def get_tags(self) -> dict[str, str]:
+        """Returns the fake labels attached to the sandbox.
+
+        Returns:
+            The sandbox tags.
+        """
+
         return self.tags
 
     def poll(self) -> int | None:
+        """Returns the fake sandbox state.
+
+        Returns:
+            None because the fake sandbox is running by default.
+        """
+
         return None
 
     def exec(self, *command: str) -> FakeProcess:
+        """Records a command and returns the fake process result.
+
+        Args:
+            *command: The command words sent to the remote computer.
+
+        Returns:
+            A fake process for the command.
+        """
+
         self.commands.append(command)
         return FakeProcess(self.result)
 
     def terminate(self, wait: bool = False) -> int | None:
+        """Marks the fake sandbox as terminated.
+
+        Args:
+            wait: Whether the caller asked to wait for termination.
+
+        Returns:
+            Zero to mimic a successful stop.
+        """
+
         self.terminated = wait
         return 0
 
     def detach(self) -> None:
+        """Marks the fake sandbox as detached."""
+
         self.detached = True
 
 
 class FakeConnector:
+    """Finds fake remote computers for managed sandbox tests."""
+
     def __init__(
         self,
         sandbox: FakeRemoteSandbox | None = None,
         sandboxes: list[FakeRemoteSandbox] | None = None,
     ) -> None:
+        """Stores the fake sandbox or sandbox list to return.
+
+        Args:
+            sandbox: The sandbox returned by name or ID lookups.
+            sandboxes: The sandboxes returned by list calls.
+        """
+
         self.sandbox = sandbox
         self.sandboxes = sandboxes or []
         self.list_tags: dict[str, str] | None = None
 
     def from_name(self, app_name: str, name: str) -> FakeRemoteSandbox:
+        """Finds a fake sandbox by name.
+
+        Args:
+            app_name: The Modal app name.
+            name: The friendly sandbox name.
+
+        Returns:
+            The configured fake sandbox.
+        """
+
         if self.sandbox is None:
             raise MissingSandbox(name)
         return self.sandbox
 
     def from_id(self, sandbox_id: str) -> FakeRemoteSandbox:
+        """Finds a fake sandbox by ID.
+
+        Args:
+            sandbox_id: The Modal sandbox ID.
+
+        Returns:
+            The configured fake sandbox.
+        """
+
         if self.sandbox is None:
             raise MissingSandbox(sandbox_id)
         return self.sandbox
 
     async def list(self, *, tags: dict[str, str]):
+        """Lists fake sandboxes matching tags.
+
+        Args:
+            tags: The labels requested by the workflow.
+        """
+
         self.list_tags = tags
         for sandbox in self.sandboxes:
             yield sandbox
 
 
 class SyncListConnector(FakeConnector):
+    """Returns fake sandboxes through a normal iterator."""
+
     def list(self, *, tags: dict[str, str]):
+        """Lists fake sandboxes without async iteration.
+
+        Args:
+            tags: The labels requested by the workflow.
+        """
+
         self.list_tags = tags
         yield from self.sandboxes
 
 
 class TerminateAllConnector(FakeConnector):
+    """Finds listed fake sandboxes again by ID for termination tests."""
+
     def __init__(self, sandboxes: list[FakeRemoteSandbox]) -> None:
+        """Builds a connector indexed by fake sandbox ID.
+
+        Args:
+            sandboxes: The fake sandboxes available to terminate.
+        """
+
         super().__init__(sandboxes=sandboxes)
         self.by_id = {sandbox.object_id: sandbox for sandbox in sandboxes}
 
     def from_id(self, sandbox_id: str) -> FakeRemoteSandbox:
+        """Finds a listed fake sandbox by ID.
+
+        Args:
+            sandbox_id: The fake Modal sandbox ID.
+
+        Returns:
+            The matching fake sandbox.
+        """
+
         return self.by_id[sandbox_id]
 
 
@@ -251,13 +426,72 @@ def test_exec_rejects_empty_command() -> None:
 
 
 def test_exec_runs_command_and_detaches() -> None:
-    remote = FakeRemoteSandbox(result=CommandResult(7, "out", "err"))
+    remote = FakeRemoteSandbox(
+        result=CommandResult(returncode=7, stdout="out", stderr="err")
+    )
     manager = ManagedSandbox(connector=FakeConnector(remote))
 
     result = manager.exec(["python", "--version"], name="devbox")
 
-    assert result == CommandResult(7, "out", "err")
+    assert result == CommandResult(returncode=7, stdout="out", stderr="err")
     assert remote.commands == [("python", "--version")]
+    assert remote.detached
+
+
+def test_copy_to_copies_local_file_and_detaches() -> None:
+    remote = FakeRemoteSandbox()
+    manager = ManagedSandbox(connector=FakeConnector(remote))
+
+    manager.copy_to(Path("local.txt"), "/workspace/local.txt", name="devbox")
+
+    assert remote.filesystem.copied_from_local == [
+        (Path("local.txt"), "/workspace/local.txt")
+    ]
+    assert remote.detached
+
+
+def test_copy_from_copies_remote_file_and_detaches() -> None:
+    remote = FakeRemoteSandbox()
+    manager = ManagedSandbox(connector=FakeConnector(remote))
+
+    manager.copy_from("/workspace/result.txt", Path("result.txt"), sandbox_id="sb-123")
+
+    assert remote.filesystem.copied_to_local == [
+        ("/workspace/result.txt", Path("result.txt"))
+    ]
+    assert remote.detached
+
+
+def test_screenshot_uses_existing_sandbox_and_copies_outputs(tmp_path, monkeypatch) -> None:
+    remote = FakeRemoteSandbox()
+    image_path = tmp_path / "example.png"
+    monkeypatch.setattr(
+        sandbox_workflow,
+        "screenshot_path",
+        lambda url, output_dir: image_path,
+    )
+    manager = ManagedSandbox(connector=FakeConnector(remote))
+
+    result = manager.screenshot("https://example.com", name="devbox")
+
+    assert result.url == "https://example.com"
+    assert result.image_path == image_path
+    assert result.text_path == tmp_path / "example.txt"
+    assert remote.filesystem.copied_from_local[0][0].name == "screenshot_page.py"
+    assert remote.filesystem.copied_from_local[0][1] == "/tmp/screenshot.py"
+    assert remote.commands == [
+        (
+            "python",
+            "/tmp/screenshot.py",
+            "https://example.com",
+            "/tmp/screenshot.png",
+            "/tmp/observation.txt",
+        )
+    ]
+    assert remote.filesystem.copied_to_local == [
+        ("/tmp/screenshot.png", image_path),
+        ("/tmp/observation.txt", tmp_path / "example.txt"),
+    ]
     assert remote.detached
 
 
@@ -328,6 +562,214 @@ def test_cli_list_prints_sandbox_rows(monkeypatch, capsys) -> None:
     assert "python" in output
     assert "browserbox" in output
     assert "browser" in output
+
+
+def test_cli_inspect_by_name_prints_sandbox_details(monkeypatch, capsys) -> None:
+    calls: list[tuple[str | None, str | None]] = []
+
+    class InspectManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def status(
+            self,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> sandbox_workflow.SandboxHandle:
+            calls.append((name, sandbox_id))
+            return sandbox_workflow.SandboxHandle(
+                object_id="sb-devbox",
+                app_name=self.app_name,
+                name=name,
+                tags={
+                    "managed": "true",
+                    "name": "devbox",
+                    "image": "dev",
+                    "owner": "tests",
+                },
+            )
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", InspectManager)
+
+    result = main(["inspect", "--name", "devbox"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert calls == [("devbox", None)]
+    assert "Name" in output
+    assert "devbox" in output
+    assert "Sandbox ID" in output
+    assert "sb-devbox" in output
+    assert "App name" in output
+    assert "my-app" in output
+    assert "Image" in output
+    assert "dev" in output
+    assert "State" in output
+    assert "running" in output
+    assert "Tags" in output
+    assert "managed" in output
+    assert "owner" in output
+    assert "tests" in output
+
+
+def test_cli_inspect_by_id_prints_done_state(monkeypatch, capsys) -> None:
+    calls: list[tuple[str | None, str | None]] = []
+
+    class InspectManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def status(
+            self,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> sandbox_workflow.SandboxHandle:
+            calls.append((name, sandbox_id))
+            return sandbox_workflow.SandboxHandle(
+                object_id=sandbox_id or "sb-missing",
+                app_name=self.app_name,
+                tags={"managed": "true", "name": "devbox", "image": "python"},
+                returncode=7,
+            )
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", InspectManager)
+
+    result = main(["inspect", "--id", "sb-123"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert calls == [(None, "sb-123")]
+    assert "devbox" in output
+    assert "sb-123" in output
+    assert "my-app" in output
+    assert "python" in output
+    assert "done:7" in output
+    assert "managed" in output
+
+
+def test_cli_copy_to_uses_name_and_prints_paths(monkeypatch, capsys) -> None:
+    calls: list[tuple[Path, str, str | None, str | None]] = []
+
+    class CopyManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def copy_to(
+            self,
+            local_path: Path,
+            remote_path: str,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> None:
+            calls.append((local_path, remote_path, name, sandbox_id))
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", CopyManager)
+
+    result = main(["copy-to", "--name", "devbox", "local.txt", "/workspace/local.txt"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert calls == [(Path("local.txt"), "/workspace/local.txt", "devbox", None)]
+    assert "local.txt" in output
+    assert "/workspace/local.txt" in output
+
+
+def test_cli_copy_from_uses_id_and_prints_paths(monkeypatch, capsys) -> None:
+    calls: list[tuple[str, Path, str | None, str | None]] = []
+
+    class CopyManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def copy_from(
+            self,
+            remote_path: str,
+            local_path: Path,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> None:
+            calls.append((remote_path, local_path, name, sandbox_id))
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", CopyManager)
+
+    result = main(
+        ["copy-from", "--id", "sb-123", "/workspace/result.txt", "result.txt"]
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert calls == [("/workspace/result.txt", Path("result.txt"), None, "sb-123")]
+    assert "/workspace/result.txt" in output
+    assert "result.txt" in output
+
+
+def test_cli_screenshot_uses_name_and_prints_saved_paths(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    calls: list[tuple[str, str | None, str | None]] = []
+    image_path = tmp_path / "example.png"
+    text_path = tmp_path / "example.txt"
+
+    class ScreenshotManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def screenshot(
+            self,
+            url: str,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> sandbox_workflow.ScreenshotResult:
+            calls.append((url, name, sandbox_id))
+            return sandbox_workflow.ScreenshotResult(url, image_path, text_path)
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", ScreenshotManager)
+
+    result = main(["screenshot", "--name", "devbox", "https://example.com"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert calls == [("https://example.com", "devbox", None)]
+    assert "Screenshot target: https://example.com" in output
+    assert str(image_path.resolve()) in output
+    assert str(text_path.resolve()) in output
+
+
+def test_cli_screenshot_uses_id_and_resolves_search_terms(monkeypatch, capsys) -> None:
+    calls: list[tuple[str, str | None, str | None]] = []
+
+    class ScreenshotManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def screenshot(
+            self,
+            url: str,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> sandbox_workflow.ScreenshotResult:
+            calls.append((url, name, sandbox_id))
+            return sandbox_workflow.ScreenshotResult(
+                url,
+                Path("screenshots/example.png"),
+                Path("screenshots/example.txt"),
+            )
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", ScreenshotManager)
+    monkeypatch.setattr(
+        sandbox_cli,
+        "first_search_result",
+        lambda query: "https://example.com/search-result",
+    )
+
+    result = main(["screenshot", "--id", "sb-123", "example", "search"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert calls == [("https://example.com/search-result", None, "sb-123")]
+    assert "Screenshot target: https://example.com/search-result" in output
 
 
 def test_cli_doctor_prints_checks(monkeypatch, capsys) -> None:

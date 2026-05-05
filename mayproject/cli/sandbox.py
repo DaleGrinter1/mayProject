@@ -1,10 +1,13 @@
 import argparse
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from time import sleep
 
 import modal
 
+from mayproject.search import first_search_result
+from mayproject.urls import is_valid_url
 from mayproject.workflows.doctor import DoctorCheck, run_doctor
 from mayproject.workflows.sandbox import ManagedSandbox, parse_volume_mount
 
@@ -58,6 +61,10 @@ def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
         print_handle("Sandbox status", manager.status(name=args.name, sandbox_id=args.id))
         return 0
 
+    if args.action == "inspect":
+        print_inspection(manager.status(name=args.name, sandbox_id=args.id))
+        return 0
+
     if args.action == "list":
         if args.watch:
             watch_handles(manager, args.interval)
@@ -77,6 +84,35 @@ def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
         if result.stderr:
             print(result.stderr, end="", file=sys.stderr)
         return result.returncode
+
+    if args.action == "copy-to":
+        manager.copy_to(
+            Path(args.local_path),
+            args.remote_path,
+            name=args.name,
+            sandbox_id=args.id,
+        )
+        print(f"Copied {args.local_path} to {args.remote_path}")
+        return 0
+
+    if args.action == "copy-from":
+        manager.copy_from(
+            args.remote_path,
+            Path(args.local_path),
+            name=args.name,
+            sandbox_id=args.id,
+        )
+        print(f"Copied {args.remote_path} to {args.local_path}")
+        return 0
+
+    if args.action == "screenshot":
+        text = " ".join(args.target)
+        url = text if is_valid_url(text) else first_search_result(text)
+        print(f"Screenshot target: {url}")
+        result = manager.screenshot(url, name=args.name, sandbox_id=args.id)
+        print(f"Screenshot saved to {result.image_path.resolve()}")
+        print(f"Observation saved to {result.text_path.resolve()}")
+        return 0
 
     if args.action == "shell":
         return manager.shell(name=args.name, sandbox_id=args.id)
@@ -114,6 +150,9 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("status")
     add_sandbox_reference(status)
 
+    inspect = subparsers.add_parser("inspect")
+    add_sandbox_reference(inspect)
+
     list_parser = subparsers.add_parser("list")
     list_parser.add_argument("--watch", action="store_true")
     list_parser.add_argument("--interval", type=positive_interval, default=2.0)
@@ -123,6 +162,20 @@ def build_parser() -> argparse.ArgumentParser:
     execute = subparsers.add_parser("exec")
     add_sandbox_reference(execute)
     execute.add_argument("command", nargs=argparse.REMAINDER)
+
+    copy_to = subparsers.add_parser("copy-to")
+    add_sandbox_reference(copy_to)
+    copy_to.add_argument("local_path")
+    copy_to.add_argument("remote_path")
+
+    copy_from = subparsers.add_parser("copy-from")
+    add_sandbox_reference(copy_from)
+    copy_from.add_argument("remote_path")
+    copy_from.add_argument("local_path")
+
+    screenshot = subparsers.add_parser("screenshot")
+    add_sandbox_reference(screenshot)
+    screenshot.add_argument("target", nargs="+")
 
     shell = subparsers.add_parser("shell")
     add_sandbox_reference(shell)
@@ -217,6 +270,47 @@ def print_handles(handles: list[object]) -> None:
         for handle in handles
     ]
     print_table(("Name", "Image", "State", "Sandbox ID"), rows)
+
+
+def sandbox_state(handle: object) -> str:
+    """Describes whether a remote computer is running.
+
+    Args:
+        handle: The remote computer details.
+
+    Returns:
+        A short state label for people to read.
+    """
+
+    return "running" if handle.returncode is None else f"done:{handle.returncode}"
+
+
+def print_inspection(handle: object) -> None:
+    """Prints detailed information about one remote computer.
+
+    Args:
+        handle: The remote computer details.
+    """
+
+    name = handle.name or handle.tags.get("name", "-")
+    image = handle.tags.get("image", "-")
+    print_table(
+        ("Field", "Value"),
+        [
+            ("Name", name),
+            ("Sandbox ID", handle.object_id),
+            ("App name", handle.app_name),
+            ("Image", image),
+            ("State", sandbox_state(handle)),
+        ],
+    )
+
+    tag_rows = sorted(handle.tags.items())
+    print("\nTags")
+    if tag_rows:
+        print_table(("Tag", "Value"), tag_rows)
+    else:
+        print("(none)")
 
 
 def print_terminated(handles: list[object]) -> None:

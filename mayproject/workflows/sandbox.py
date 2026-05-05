@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 import subprocess
 from typing import Protocol
 
 import modal
 
+from mayproject.primitives.browser import SCREENSHOT_SCRIPT_PATH
 from mayproject.sandbox.images import get_image
 from mayproject.sandbox.runner import ModalSandboxRunner
 from mayproject.sandbox.types import (
@@ -17,6 +19,12 @@ from mayproject.sandbox.types import (
     SandboxSpec,
     VolumeMount,
 )
+from mayproject.workflows.screenshot import ScreenshotResult, screenshot_path
+
+
+REMOTE_SCREENSHOT_SCRIPT_PATH = "/tmp/screenshot.py"
+REMOTE_SCREENSHOT_IMAGE_PATH = "/tmp/screenshot.png"
+REMOTE_SCREENSHOT_TEXT_PATH = "/tmp/observation.txt"
 
 
 class SandboxConnector(Protocol):
@@ -177,6 +185,101 @@ class ManagedSandbox:
                 stdout=process.stdout.read(),
                 stderr=process.stderr.read(),
             )
+        finally:
+            sandbox.detach()
+
+    def copy_to(
+        self,
+        local_path: Path,
+        remote_path: str,
+        name: str | None = None,
+        sandbox_id: str | None = None,
+    ) -> None:
+        """Copies a local file into the remote computer.
+
+        Args:
+            local_path: The file on this computer.
+            remote_path: Where to put the file on the remote computer.
+            name: The friendly sandbox name.
+            sandbox_id: The Modal sandbox ID.
+        """
+
+        sandbox = self._connect(name=name, sandbox_id=sandbox_id)
+        try:
+            sandbox.filesystem.copy_from_local(local_path, remote_path)
+        finally:
+            sandbox.detach()
+
+    def copy_from(
+        self,
+        remote_path: str,
+        local_path: Path,
+        name: str | None = None,
+        sandbox_id: str | None = None,
+    ) -> None:
+        """Copies a remote file back to this computer.
+
+        Args:
+            remote_path: The file on the remote computer.
+            local_path: Where to save the file on this computer.
+            name: The friendly sandbox name.
+            sandbox_id: The Modal sandbox ID.
+        """
+
+        sandbox = self._connect(name=name, sandbox_id=sandbox_id)
+        try:
+            sandbox.filesystem.copy_to_local(remote_path, local_path)
+        finally:
+            sandbox.detach()
+
+    def screenshot(
+        self,
+        url: str,
+        output_dir: Path = Path("screenshots"),
+        name: str | None = None,
+        sandbox_id: str | None = None,
+    ) -> ScreenshotResult:
+        """Takes a screenshot using an existing remote computer.
+
+        Args:
+            url: The web page to capture.
+            output_dir: The folder for output files.
+            name: The friendly sandbox name.
+            sandbox_id: The Modal sandbox ID.
+
+        Returns:
+            The saved screenshot and notes paths.
+        """
+
+        image_path = screenshot_path(url, output_dir)
+        text_path = image_path.with_suffix(".txt")
+        sandbox = self._connect(name=name, sandbox_id=sandbox_id)
+        try:
+            sandbox.filesystem.copy_from_local(
+                SCREENSHOT_SCRIPT_PATH,
+                REMOTE_SCREENSHOT_SCRIPT_PATH,
+            )
+            process = sandbox.exec(
+                "python",
+                REMOTE_SCREENSHOT_SCRIPT_PATH,
+                url,
+                REMOTE_SCREENSHOT_IMAGE_PATH,
+                REMOTE_SCREENSHOT_TEXT_PATH,
+            )
+            process.wait()
+            returncode = process.returncode
+            if returncode is None:
+                raise RuntimeError("Sandbox process finished without a return code")
+
+            stdout = process.stdout.read()
+            stderr = process.stderr.read()
+            if returncode != 0:
+                detail = stderr or stdout
+                raise RuntimeError(f"Screenshot failed in sandbox:\n{detail}")
+
+            sandbox.filesystem.copy_to_local(REMOTE_SCREENSHOT_IMAGE_PATH, image_path)
+            sandbox.filesystem.copy_to_local(REMOTE_SCREENSHOT_TEXT_PATH, text_path)
+            return ScreenshotResult(url=url, image_path=image_path, text_path=text_path)
         finally:
             sandbox.detach()
 

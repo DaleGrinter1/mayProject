@@ -25,9 +25,12 @@ mayproject/
   sandbox/fake.py              # fake runner for local primitive tests
   sandbox/images.py            # Modal image definitions
   sandbox/runner.py            # Modal sandbox lifecycle and command runner
-  sandbox/types.py             # shared runner protocol and result types
+  sandbox/types.py             # Pydantic models and shared runner protocol
 tests/                         # local tests that avoid remote Modal resources
 ```
+
+Runtime dependencies are Modal for remote computers and Pydantic for shared
+sandbox data models.
 
 The intended layering is:
 
@@ -55,11 +58,32 @@ The current primitive set is:
 Primitives accept an injectable runner factory, so tests can use
 `FakeSandboxRunner` without creating Modal resources.
 
-## Managed sandbox prototype
+## One-shot commands
+
+Use one-shot commands when you want a temporary sandbox to do one job and then
+go away:
+
+```bash
+uv run may-screenshot https://example.com
+uv run may-screenshot "example search term"
+uv run may-shell python --version
+uv run may-python ./path/to/script.py
+```
+
+`may-screenshot` screenshots the input directly when it is a valid `http` or
+`https` URL. Otherwise, it searches DuckDuckGo and screenshots the first result.
+Each run saves a `.png` screenshot and a matching `.txt` file with the page URL,
+title, visible text, links, and buttons.
+
+The root `screenshot.py` file is a thin compatibility wrapper around
+`may-screenshot`.
+
+## Managed sandboxes
 
 `may-sandbox` manages a named Modal Sandbox as a small remote computer. It can
 start the sandbox with a package image, attach Modal Volumes, run commands,
-open Modal's interactive shell, and stop the sandbox when finished.
+copy files, take screenshots, open Modal's interactive shell, and stop the
+sandbox when finished.
 
 Quickstart:
 
@@ -69,10 +93,24 @@ uv run may-sandbox create --name devbox --image dev --volume my-volume:/workspac
 uv run may-sandbox list
 uv run may-sandbox list --watch
 uv run may-sandbox status --name devbox
+uv run may-sandbox inspect --name devbox
 uv run may-sandbox exec --name devbox -- python --version
+uv run may-sandbox copy-to --name devbox ./script.py /workspace/script.py
+uv run may-sandbox copy-from --name devbox /workspace/result.txt ./result.txt
 uv run may-sandbox shell --name devbox
 uv run may-sandbox terminate --name devbox
 ```
+
+Screenshots can also run inside an existing managed sandbox:
+
+```bash
+uv run may-sandbox create --name browserbox --image browser
+uv run may-sandbox screenshot --name browserbox https://example.com
+uv run may-sandbox screenshot --id sb-... "example search term"
+```
+
+Managed screenshots need a sandbox created with the `browser` image because
+they use Playwright and Chromium.
 
 To stop every sandbox started by this project:
 
@@ -89,29 +127,7 @@ Available images:
 - `browser`: the Python image with Playwright and Chromium.
 - `dev`: the Python image with everyday coding tools like `git`, `curl`, and `uv`.
 
-## Usage
-
-```bash
-uv run python screenshot.py https://example.com
-uv run python screenshot.py "example search term"
-uv run may-screenshot https://example.com
-uv run may-sandbox doctor
-uv run may-sandbox create --name devbox --image dev --volume my-volume:/workspace/data
-uv run may-sandbox list
-uv run may-sandbox list --watch --interval 5
-uv run may-sandbox exec --name devbox -- git --version
-uv run may-sandbox shell --name devbox
-uv run may-sandbox terminate-all
-uv run may-shell python --version
-uv run may-python ./path/to/script.py
-```
-
-`screenshot.py` screenshots the input directly when it is a valid `http` or
-`https` URL. Otherwise, it searches DuckDuckGo and screenshots the first result.
-Each run saves a `.png` screenshot and a matching `.txt` file with the page URL,
-title, visible text, links, and buttons.
-
-The first run may take longer while Modal builds the sandbox image.
+The first run may take longer while Modal builds each sandbox image.
 
 ## Testing
 

@@ -76,7 +76,11 @@ def test_browser_primitive_raises_on_failed_capture() -> None:
     def factory(spec: SandboxSpec) -> FakeSandboxRunner:
         return FakeSandboxRunner(
             spec,
-            command_handler=lambda command: CommandResult(1, "", "boom"),
+            command_handler=lambda command: CommandResult(
+                returncode=1,
+                stdout="",
+                stderr="boom",
+            ),
         )
 
     with pytest.raises(RuntimeError, match="boom"):

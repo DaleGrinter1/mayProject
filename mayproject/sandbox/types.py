@@ -1,17 +1,22 @@
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 from typing import Protocol
 
 import modal
+from pydantic import BaseModel, ConfigDict, Field
 
 
 ImageName = Literal["python", "browser", "dev"]
 
 
-@dataclass(frozen=True)
-class VolumeMount:
+class FrozenSandboxModel(BaseModel):
+    """Provides shared settings for sandbox data models."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
+
+
+class VolumeMount(FrozenSandboxModel):
     """Names a saved folder to attach to the remote computer.
 
     Attributes:
@@ -25,8 +30,7 @@ class VolumeMount:
     create_if_missing: bool = True
 
 
-@dataclass(frozen=True)
-class SandboxHandle:
+class SandboxHandle(FrozenSandboxModel):
     """Describes a remote computer that Modal is running.
 
     Attributes:
@@ -40,12 +44,11 @@ class SandboxHandle:
     object_id: str
     app_name: str
     name: str | None = None
-    tags: dict[str, str] = field(default_factory=dict)
+    tags: dict[str, str] = Field(default_factory=dict)
     returncode: int | None = None
 
 
-@dataclass(frozen=True)
-class SandboxSpec:
+class SandboxSpec(FrozenSandboxModel):
     """Describes the remote computer this project should start.
 
     Attributes:
@@ -69,9 +72,9 @@ class SandboxSpec:
     app_name: str = "my-app"
     command: tuple[str, ...] = ("sleep", "300")
     name: str | None = None
-    image: modal.Image | None = None
-    volumes: dict[str, modal.Volume | modal.CloudBucketMount] = field(default_factory=dict)
-    env: dict[str, str | None] = field(default_factory=dict)
+    image: object | None = None
+    volumes: dict[str, object] = Field(default_factory=dict)
+    env: dict[str, str | None] = Field(default_factory=dict)
     workdir: str | None = None
     cpu: float | tuple[float, float] | None = None
     memory: int | tuple[int, int] | None = None
@@ -79,12 +82,11 @@ class SandboxSpec:
     timeout: int = 600
     idle_timeout: int | None = 120
     verbose: bool = True
-    tags: dict[str, str] = field(default_factory=dict)
+    tags: dict[str, str] = Field(default_factory=dict)
     terminate_on_exit: bool = True
 
 
-@dataclass(frozen=True)
-class CommandResult:
+class CommandResult(FrozenSandboxModel):
     """Holds what a remote command printed and how it finished.
 
     Attributes:
