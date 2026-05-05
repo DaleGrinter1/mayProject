@@ -72,6 +72,12 @@ class ModalSandboxRunner:
 
         return modal.Sandbox.from_id(sandbox_id)
 
+    @classmethod
+    def list(cls, *, tags: dict[str, str]) -> object:
+        """Finds remote computers that match the labels."""
+
+        return modal.Sandbox.list(tags=tags)
+
     def handle(self) -> SandboxHandle:
         """Returns the name and ID for the remote computer."""
 

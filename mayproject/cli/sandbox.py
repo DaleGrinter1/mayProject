@@ -26,6 +26,10 @@ def main(argv: list[str] | None = None) -> int:
         print_handle("Sandbox status", manager.status(name=args.name, sandbox_id=args.id))
         return 0
 
+    if args.action == "list":
+        print_handles(manager.list())
+        return 0
+
     if args.action == "exec":
         command = strip_command_separator(args.command)
         result = manager.exec(command, name=args.name, sandbox_id=args.id)
@@ -63,6 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("status")
     add_sandbox_reference(status)
 
+    subparsers.add_parser("list")
+
     execute = subparsers.add_parser("exec")
     add_sandbox_reference(execute)
     execute.add_argument("command", nargs=argparse.REMAINDER)
@@ -94,7 +100,48 @@ def print_handle(label: str, handle: object) -> None:
     print(f"  app: {handle.app_name}")
     if handle.name:
         print(f"  name: {handle.name}")
+    if handle.tags.get("image"):
+        print(f"  image: {handle.tags['image']}")
     print(f"  returncode: {handle.returncode}")
+
+
+def print_handles(handles: list[object]) -> None:
+    if not handles:
+        print("No managed sandboxes found")
+        return
+
+    rows = [
+        (
+            handle.name or handle.tags.get("name", "-"),
+            handle.tags.get("image", "-"),
+            "running" if handle.returncode is None else f"done:{handle.returncode}",
+            handle.object_id,
+        )
+        for handle in handles
+    ]
+    print_table(("Name", "Image", "State", "Sandbox ID"), rows)
+
+
+def print_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> None:
+    widths = [
+        max(len(header), *(len(row[index]) for row in rows))
+        for index, header in enumerate(headers)
+    ]
+    border = "+-" + "-+-".join("-" * width for width in widths) + "-+"
+    header = "| " + " | ".join(
+        text.ljust(widths[index]) for index, text in enumerate(headers)
+    ) + " |"
+
+    print(border)
+    print(header)
+    print(border)
+    for row in rows:
+        print(
+            "| "
+            + " | ".join(text.ljust(widths[index]) for index, text in enumerate(row))
+            + " |"
+        )
+    print(border)
 
 
 if __name__ == "__main__":

@@ -62,6 +62,7 @@ open Modal's interactive shell, and stop the sandbox when finished.
 
 ```bash
 uv run may-sandbox create --name devbox --image python --volume my-volume:/workspace/data
+uv run may-sandbox list
 uv run may-sandbox status --name devbox
 uv run may-sandbox exec --name devbox -- python --version
 uv run may-sandbox shell --name devbox
@@ -78,6 +79,7 @@ uv run python screenshot.py https://example.com
 uv run python screenshot.py "example search term"
 uv run may-screenshot https://example.com
 uv run may-sandbox create --name devbox --image python --volume my-volume:/workspace/data
+uv run may-sandbox list
 uv run may-sandbox shell --name devbox
 uv run may-shell python --version
 uv run may-python ./path/to/script.py

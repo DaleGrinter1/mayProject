@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import asyncio
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 import subprocess
@@ -20,6 +23,8 @@ class SandboxConnector(Protocol):
     def from_name(self, app_name: str, name: str) -> modal.Sandbox: ...
 
     def from_id(self, sandbox_id: str) -> modal.Sandbox: ...
+
+    def list(self, *, tags: dict[str, str]) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -55,11 +60,16 @@ class ManagedSandbox:
             volumes=build_volume_map(volume_mounts),
             timeout=timeout,
             idle_timeout=idle_timeout,
-            tags={"managed": "true", "name": name},
+            tags={"managed": "true", "name": name, "image": image_name},
             terminate_on_exit=False,
         )
         with self.runner_factory(spec) as runner:
             return runner.handle()
+
+    def list(self) -> list[SandboxHandle]:
+        """Shows the remote computers this project started."""
+
+        return asyncio.run(self._list())
 
     def status(self, name: str | None = None, sandbox_id: str | None = None) -> SandboxHandle:
         """Shows whether the remote computer is still running."""
@@ -119,6 +129,20 @@ class ManagedSandbox:
             return self.status(name=name)
         except self.not_found_errors:
             return None
+
+    async def _list(self) -> list[SandboxHandle]:
+        handles: list[SandboxHandle] = []
+        sandboxes = self.connector.list(tags={"managed": "true"})
+        if hasattr(sandboxes, "__aiter__"):
+            async for sandbox in sandboxes:
+                handles.append(handle_from_sandbox(sandbox, self.app_name))
+                sandbox.detach()
+            return handles
+
+        for sandbox in sandboxes:
+            handles.append(handle_from_sandbox(sandbox, self.app_name))
+            sandbox.detach()
+        return handles
 
     def _connect(self, name: str | None, sandbox_id: str | None) -> modal.Sandbox:
         if sandbox_id:

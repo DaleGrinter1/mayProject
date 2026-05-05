@@ -1,5 +1,6 @@
 import pytest
 
+from mayproject.cli.sandbox import main
 from mayproject.sandbox.fake import FakeSandboxRunner
 from mayproject.sandbox.types import CommandResult, SandboxSpec
 from mayproject.workflows import sandbox as sandbox_workflow
@@ -43,9 +44,11 @@ class FakeRemoteSandbox:
         self,
         object_id: str = "sb-123",
         result: CommandResult | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         self.object_id = object_id
         self.result = result or CommandResult(0, "", "")
+        self.tags = tags or {"managed": "true"}
         self.commands: list[tuple[str, ...]] = []
         self.detached = False
         self.terminated = False
@@ -54,7 +57,7 @@ class FakeRemoteSandbox:
         return None
 
     def get_tags(self) -> dict[str, str]:
-        return {"managed": "true"}
+        return self.tags
 
     def poll(self) -> int | None:
         return None
@@ -72,8 +75,14 @@ class FakeRemoteSandbox:
 
 
 class FakeConnector:
-    def __init__(self, sandbox: FakeRemoteSandbox | None = None) -> None:
+    def __init__(
+        self,
+        sandbox: FakeRemoteSandbox | None = None,
+        sandboxes: list[FakeRemoteSandbox] | None = None,
+    ) -> None:
         self.sandbox = sandbox
+        self.sandboxes = sandboxes or []
+        self.list_tags: dict[str, str] | None = None
 
     def from_name(self, app_name: str, name: str) -> FakeRemoteSandbox:
         if self.sandbox is None:
@@ -84,6 +93,17 @@ class FakeConnector:
         if self.sandbox is None:
             raise MissingSandbox(sandbox_id)
         return self.sandbox
+
+    async def list(self, *, tags: dict[str, str]):
+        self.list_tags = tags
+        for sandbox in self.sandboxes:
+            yield sandbox
+
+
+class SyncListConnector(FakeConnector):
+    def list(self, *, tags: dict[str, str]):
+        self.list_tags = tags
+        yield from self.sandboxes
 
 
 def test_parse_volume_mount_accepts_name_and_absolute_path() -> None:
@@ -152,7 +172,7 @@ def test_create_passes_named_sandbox_image_and_volumes(monkeypatch) -> None:
     assert runner.spec.name == "devbox"
     assert runner.spec.image == "python-image"
     assert runner.spec.volumes == {"/workspace/data": volume}
-    assert runner.spec.tags == {"managed": "true", "name": "devbox"}
+    assert runner.spec.tags == {"managed": "true", "name": "devbox", "image": "python"}
 
 
 def test_create_returns_existing_named_sandbox() -> None:
@@ -169,6 +189,42 @@ def test_create_returns_existing_named_sandbox() -> None:
     assert handle.object_id == "sb-existing"
     assert handle.name == "devbox"
     assert remote.detached
+
+
+def test_list_returns_managed_sandboxes() -> None:
+    pybox = FakeRemoteSandbox(
+        object_id="sb-py",
+        tags={"managed": "true", "name": "pybox", "image": "python"},
+    )
+    browserbox = FakeRemoteSandbox(
+        object_id="sb-browser",
+        tags={"managed": "true", "name": "browserbox", "image": "browser"},
+    )
+    connector = FakeConnector(sandboxes=[pybox, browserbox])
+    manager = ManagedSandbox(connector=connector)
+
+    handles = manager.list()
+
+    assert connector.list_tags == {"managed": "true"}
+    assert [handle.object_id for handle in handles] == ["sb-py", "sb-browser"]
+    assert handles[0].tags["image"] == "python"
+    assert pybox.detached
+    assert browserbox.detached
+
+
+def test_list_accepts_sync_sandbox_iterators() -> None:
+    pybox = FakeRemoteSandbox(
+        object_id="sb-py",
+        tags={"managed": "true", "name": "pybox", "image": "python"},
+    )
+    connector = SyncListConnector(sandboxes=[pybox])
+    manager = ManagedSandbox(connector=connector)
+
+    handles = manager.list()
+
+    assert connector.list_tags == {"managed": "true"}
+    assert [handle.object_id for handle in handles] == ["sb-py"]
+    assert pybox.detached
 
 
 def test_exec_rejects_empty_command() -> None:
@@ -213,3 +269,33 @@ def test_terminate_stops_and_detaches() -> None:
     assert result == 0
     assert remote.terminated
     assert remote.detached
+
+
+def test_cli_list_prints_sandbox_rows(monkeypatch, capsys) -> None:
+    handles = [
+        sandbox_workflow.SandboxHandle(
+            object_id="sb-py",
+            app_name="my-app",
+            tags={"name": "pybox", "image": "python"},
+        ),
+        sandbox_workflow.SandboxHandle(
+            object_id="sb-browser",
+            app_name="my-app",
+            tags={"name": "browserbox", "image": "browser"},
+        ),
+    ]
+
+    monkeypatch.setattr(sandbox_workflow.ManagedSandbox, "list", lambda self: handles)
+
+    result = main(["list"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "| Name" in output
+    assert "| Image" in output
+    assert "| State" in output
+    assert "| Sandbox ID" in output
+    assert "pybox" in output
+    assert "python" in output
+    assert "browserbox" in output
+    assert "browser" in output
