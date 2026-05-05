@@ -10,7 +10,14 @@ from mayproject.workflows.sandbox import ManagedSandbox, parse_volume_mount
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Runs the remote computer command line tool."""
+    """Runs the remote computer command line tool.
+
+    Args:
+        argv: Optional command-line words.
+
+    Returns:
+        The command's finish code.
+    """
 
     parser = build_parser()
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
@@ -26,7 +33,15 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
-    """Runs the command the person chose."""
+    """Runs the command the person chose.
+
+    Args:
+        args: Parsed command-line choices.
+        manager: The remote computer manager.
+
+    Returns:
+        The command's finish code.
+    """
 
     if args.action == "create":
         handle = manager.create(
@@ -79,7 +94,11 @@ def run_command(args: argparse.Namespace, manager: ManagedSandbox) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Builds the command line choices for the remote computer."""
+    """Builds the command line choices for the remote computer.
+
+    Returns:
+        The command-line parser.
+    """
 
     parser = argparse.ArgumentParser(prog="may-sandbox")
     parser.add_argument("--app-name", default="my-app")
@@ -117,18 +136,42 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def add_sandbox_reference(parser: argparse.ArgumentParser) -> None:
+    """Adds name or ID choices to a command.
+
+    Args:
+        parser: The command parser to update.
+    """
+
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--name")
     group.add_argument("--id")
 
 
 def strip_command_separator(command: list[str]) -> list[str]:
+    """Removes the extra marker before a command.
+
+    Args:
+        command: Command words from the command line.
+
+    Returns:
+        Command words without the `--` marker.
+    """
+
     if command[:1] == ["--"]:
         return command[1:]
     return command
 
 
 def positive_interval(text: str) -> float:
+    """Checks that a refresh speed is above zero.
+
+    Args:
+        text: The interval text from the command line.
+
+    Returns:
+        The interval as a number.
+    """
+
     value = float(text)
     if value <= 0:
         raise argparse.ArgumentTypeError("interval must be greater than zero")
@@ -136,6 +179,13 @@ def positive_interval(text: str) -> float:
 
 
 def print_handle(label: str, handle: object) -> None:
+    """Prints one remote computer.
+
+    Args:
+        label: A short heading.
+        handle: The remote computer details.
+    """
+
     print(label)
     print(f"  id: {handle.object_id}")
     print(f"  app: {handle.app_name}")
@@ -147,6 +197,12 @@ def print_handle(label: str, handle: object) -> None:
 
 
 def print_handles(handles: list[object]) -> None:
+    """Prints remote computers as a table.
+
+    Args:
+        handles: Remote computers to show.
+    """
+
     if not handles:
         print("No managed sandboxes found")
         return
@@ -164,6 +220,12 @@ def print_handles(handles: list[object]) -> None:
 
 
 def print_terminated(handles: list[object]) -> None:
+    """Prints the remote computers that were stopped.
+
+    Args:
+        handles: Remote computers that were stopped.
+    """
+
     if not handles:
         print("No managed sandboxes found")
         return
@@ -181,6 +243,12 @@ def print_terminated(handles: list[object]) -> None:
 
 
 def print_doctor(checks: list[DoctorCheck]) -> None:
+    """Prints setup checks as a table.
+
+    Args:
+        checks: Setup checks to show.
+    """
+
     rows = [
         (check.name, "ok" if check.ok else "needs help", check.message)
         for check in checks
@@ -194,7 +262,14 @@ def watch_handles(
     sleep_fn: Callable[[float], object] | None = None,
     clear_screen: Callable[[], object] | None = None,
 ) -> None:
-    """Refreshes the remote computer list until you stop it."""
+    """Refreshes the remote computer list until you stop it.
+
+    Args:
+        manager: The remote computer manager.
+        interval: Seconds between refreshes.
+        sleep_fn: Optional sleep function for tests.
+        clear_screen: Optional screen clear function for tests.
+    """
 
     sleep_for = sleep_fn or sleep
     clear = clear_screen or clear_terminal
@@ -211,11 +286,20 @@ def watch_handles(
 
 
 def clear_terminal() -> None:
+    """Clears the terminal before drawing a fresh table."""
+
     sys.stdout.write("\033[2J\033[3J\033[H")
     sys.stdout.flush()
 
 
 def print_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> None:
+    """Prints rows with simple borders.
+
+    Args:
+        headers: The table column names.
+        rows: The table rows.
+    """
+
     widths = [
         max(len(header), *(len(row[index]) for row in rows))
         for index, header in enumerate(headers)
@@ -238,6 +322,15 @@ def print_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> None:
 
 
 def friendly_error(exc: BaseException) -> str:
+    """Turns common errors into friendlier words.
+
+    Args:
+        exc: The error to explain.
+
+    Returns:
+        A plain message for the user.
+    """
+
     if isinstance(exc, modal.exception.NotFoundError):
         return "I could not find that sandbox. Try `uv run may-sandbox list`."
     if isinstance(exc, modal.exception.AuthError):

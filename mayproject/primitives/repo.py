@@ -8,6 +8,14 @@ from mayproject.sandbox.types import CommandResult, RunnerFactory, SandboxSpec
 
 @dataclass(frozen=True)
 class RepoConfig:
+    """Stores where a repository is copied on the remote computer.
+
+    Attributes:
+        workdir: Where the repository is copied remotely.
+        timeout: How long the remote computer may run.
+        idle_timeout: How long the remote computer may sit unused.
+    """
+
     workdir: str = "/tmp/repo"
     timeout: int = 900
     idle_timeout: int = 180
@@ -15,11 +23,29 @@ class RepoConfig:
 
 @dataclass(frozen=True)
 class RepoPrimitive:
+    """Runs a command inside a copied repository.
+
+    Attributes:
+        app_name: The Modal app name to use.
+        config: The repository run settings.
+        runner_factory: Builds the remote computer runner.
+    """
+
     app_name: str = "my-app"
     config: RepoConfig = RepoConfig()
     runner_factory: RunnerFactory = ModalSandboxRunner
 
     def run_command(self, repo_url: str, command: Sequence[str]) -> CommandResult:
+        """Copies a repository and runs one command inside it.
+
+        Args:
+            repo_url: The repository web address.
+            command: The command to run inside the repository.
+
+        Returns:
+            What the remote command printed and how it finished.
+        """
+
         if not repo_url:
             raise ValueError("Repository URL is required")
         if not command:
@@ -47,5 +73,14 @@ class RepoPrimitive:
 
 
 def _shell_quote(value: str) -> str:
-    return "'" + value.replace("'", "'\"'\"'") + "'"
+    """Keeps one command part safe for a shell script.
 
+    Args:
+        value: One command word.
+
+    Returns:
+        The safely quoted command word.
+    """
+
+    # Keep each command part safe when it is placed into a shell script.
+    return "'" + value.replace("'", "'\"'\"'") + "'"

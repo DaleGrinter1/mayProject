@@ -6,6 +6,15 @@ from mayproject.workflows.screenshot import capture_url
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Screenshots a web page or search result.
+
+    Args:
+        argv: Optional command-line words.
+
+    Returns:
+        Zero when the screenshot is saved.
+    """
+
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
         raise SystemExit("Usage: may-screenshot <url or search terms>")
@@ -22,4 +31,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

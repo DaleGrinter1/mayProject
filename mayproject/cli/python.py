@@ -5,6 +5,15 @@ from mayproject.primitives.python import PythonPrimitive
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Runs a Python file on a remote computer.
+
+    Args:
+        argv: Optional command-line words.
+
+    Returns:
+        The remote command's finish code.
+    """
+
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
         raise SystemExit("Usage: may-python <script.py> [args...]")
@@ -20,4 +29,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

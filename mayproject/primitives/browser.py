@@ -11,6 +11,16 @@ SCREENSHOT_SCRIPT_PATH = Path(__file__).parent / "scripts" / "screenshot_page.py
 
 @dataclass(frozen=True)
 class BrowserConfig:
+    """Stores where browser files live on the remote computer.
+
+    Attributes:
+        remote_script_path: Where the browser script is copied.
+        remote_image_path: Where the screenshot is saved remotely.
+        remote_text_path: Where the page notes are saved remotely.
+        timeout: How long the remote computer may run.
+        idle_timeout: How long the remote computer may sit unused.
+    """
+
     remote_script_path: str = "/tmp/screenshot.py"
     remote_image_path: str = "/tmp/screenshot.png"
     remote_text_path: str = "/tmp/observation.txt"
@@ -20,11 +30,27 @@ class BrowserConfig:
 
 @dataclass(frozen=True)
 class BrowserPrimitive:
+    """Uses a remote browser to look at a web page.
+
+    Attributes:
+        app_name: The Modal app name to use.
+        config: The browser settings.
+        runner_factory: Builds the remote computer runner.
+    """
+
     app_name: str = "my-app"
     config: BrowserConfig = BrowserConfig()
     runner_factory: RunnerFactory = ModalSandboxRunner
 
     def capture_page(self, url: str, image_path: Path, text_path: Path) -> None:
+        """Saves a screenshot and page notes for a web page.
+
+        Args:
+            url: The web page to open.
+            image_path: Where to save the screenshot on this computer.
+            text_path: Where to save the page notes on this computer.
+        """
+
         spec = SandboxSpec(
             app_name=self.app_name,
             image=get_image("browser"),

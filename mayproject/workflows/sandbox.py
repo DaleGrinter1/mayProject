@@ -20,16 +20,54 @@ from mayproject.sandbox.types import (
 
 
 class SandboxConnector(Protocol):
-    def from_name(self, app_name: str, name: str) -> modal.Sandbox: ...
+    """Describes how to find remote computers on Modal."""
 
-    def from_id(self, sandbox_id: str) -> modal.Sandbox: ...
+    def from_name(self, app_name: str, name: str) -> modal.Sandbox:
+        """Finds a remote computer by name.
 
-    def list(self, *, tags: dict[str, str]) -> object: ...
+        Args:
+            app_name: The Modal app name.
+            name: The friendly sandbox name.
+
+        Returns:
+            The matching Modal sandbox.
+        """
+        ...
+
+    def from_id(self, sandbox_id: str) -> modal.Sandbox:
+        """Finds a remote computer by ID.
+
+        Args:
+            sandbox_id: The Modal sandbox ID.
+
+        Returns:
+            The matching Modal sandbox.
+        """
+        ...
+
+    def list(self, *, tags: dict[str, str]) -> object:
+        """Finds remote computers with matching labels.
+
+        Args:
+            tags: Labels to match.
+
+        Returns:
+            Matching Modal sandboxes.
+        """
+        ...
 
 
 @dataclass(frozen=True)
 class ManagedSandbox:
-    """Controls one remote computer on Modal."""
+    """Controls one remote computer on Modal.
+
+    Attributes:
+        app_name: The Modal app name to use.
+        runner_factory: Builds a new remote computer runner.
+        connector: Finds existing remote computers.
+        not_found_errors: Errors treated as missing sandboxes.
+        run_shell_command: Optional shell command runner for tests.
+    """
 
     app_name: str = "my-app"
     runner_factory: RunnerFactory = ModalSandboxRunner
@@ -46,7 +84,19 @@ class ManagedSandbox:
         timeout: int = 600,
         idle_timeout: int | None = 120,
     ) -> SandboxHandle:
-        """Starts a remote computer on Modal."""
+        """Starts a remote computer on Modal.
+
+        Args:
+            name: The friendly sandbox name.
+            image_name: The image name to use.
+            volume_mounts: Saved folders to attach.
+            command: The command that keeps the sandbox alive.
+            timeout: How long the sandbox may run.
+            idle_timeout: How long the sandbox may sit unused.
+
+        Returns:
+            The remote computer details.
+        """
 
         existing = self._find_by_name(name)
         if existing is not None:
@@ -67,7 +117,11 @@ class ManagedSandbox:
             return runner.handle()
 
     def list(self) -> list[SandboxHandle]:
-        """Shows the remote computers this project started."""
+        """Shows the remote computers this project started.
+
+        Returns:
+            Remote computers with this project's managed label.
+        """
 
         sandboxes = self.connector.list(tags={"managed": "true"})
         if hasattr(sandboxes, "__aiter__"):
@@ -75,7 +129,15 @@ class ManagedSandbox:
         return list_handles(sandboxes, self.app_name)
 
     def status(self, name: str | None = None, sandbox_id: str | None = None) -> SandboxHandle:
-        """Shows whether the remote computer is still running."""
+        """Shows whether the remote computer is still running.
+
+        Args:
+            name: The friendly sandbox name.
+            sandbox_id: The Modal sandbox ID.
+
+        Returns:
+            The remote computer details.
+        """
 
         sandbox = self._connect(name=name, sandbox_id=sandbox_id)
         try:
@@ -89,7 +151,16 @@ class ManagedSandbox:
         name: str | None = None,
         sandbox_id: str | None = None,
     ) -> CommandResult:
-        """Runs a command inside the remote computer."""
+        """Runs a command inside the remote computer.
+
+        Args:
+            command: The command and its arguments.
+            name: The friendly sandbox name.
+            sandbox_id: The Modal sandbox ID.
+
+        Returns:
+            What the remote command printed and how it finished.
+        """
 
         if not command:
             raise ValueError("Sandbox command must contain at least one argument")
@@ -110,7 +181,15 @@ class ManagedSandbox:
             sandbox.detach()
 
     def terminate(self, name: str | None = None, sandbox_id: str | None = None) -> int | None:
-        """Stops the remote computer."""
+        """Stops the remote computer.
+
+        Args:
+            name: The friendly sandbox name.
+            sandbox_id: The Modal sandbox ID.
+
+        Returns:
+            The remote computer's final code, if Modal reports one.
+        """
 
         sandbox = self._connect(name=name, sandbox_id=sandbox_id)
         try:
@@ -119,7 +198,11 @@ class ManagedSandbox:
             sandbox.detach()
 
     def terminate_all(self) -> list[SandboxHandle]:
-        """Stops every remote computer this project started."""
+        """Stops every remote computer this project started.
+
+        Returns:
+            The remote computers that were asked to stop.
+        """
 
         handles = self.list()
         for handle in handles:
@@ -127,7 +210,15 @@ class ManagedSandbox:
         return handles
 
     def shell(self, name: str | None = None, sandbox_id: str | None = None) -> int:
-        """Opens a shell inside the remote computer."""
+        """Opens a shell inside the remote computer.
+
+        Args:
+            name: The friendly sandbox name.
+            sandbox_id: The Modal sandbox ID.
+
+        Returns:
+            The shell command's finish code.
+        """
 
         handle = self.status(name=name, sandbox_id=sandbox_id)
         command = ["modal", "shell", handle.object_id, "--pty"]
@@ -136,12 +227,32 @@ class ManagedSandbox:
         return subprocess.run(command, check=False).returncode
 
     def _find_by_name(self, name: str) -> SandboxHandle | None:
+        """Finds a running remote computer by name.
+
+        Args:
+            name: The friendly sandbox name.
+
+        Returns:
+            The remote computer details, or None when it is missing.
+        """
+
+        # Reuse the remote computer if it is already running.
         try:
             return self.status(name=name)
         except self.not_found_errors:
             return None
 
     async def _list_async(self, sandboxes: object) -> list[SandboxHandle]:
+        """Reads remote computers from an async Modal list.
+
+        Args:
+            sandboxes: Remote computers from Modal.
+
+        Returns:
+            The remote computer details.
+        """
+
+        # Some Modal versions return remote computers through an async list.
         handles: list[SandboxHandle] = []
         async for sandbox in sandboxes:
             handles.append(handle_from_sandbox(sandbox, self.app_name))
@@ -149,15 +260,34 @@ class ManagedSandbox:
         return handles
 
     def _connect(self, name: str | None, sandbox_id: str | None) -> modal.Sandbox:
+        """Connects to one remote computer.
+
+        Args:
+            name: The friendly sandbox name.
+            sandbox_id: The Modal sandbox ID.
+
+        Returns:
+            The matching Modal sandbox.
+        """
+
+        # Prefer an exact ID when one is provided.
         if sandbox_id:
             return self.connector.from_id(sandbox_id)
+        # Names are easier for people to remember than IDs.
         if name:
             return self.connector.from_name(self.app_name, name)
         raise ValueError("Sandbox name or ID is required")
 
 
 def parse_volume_mount(text: str) -> VolumeMount:
-    """Turns a volume setting into a saved folder and mount path."""
+    """Turns a volume setting into a saved folder and mount path.
+
+    Args:
+        text: Text like `volume-name:/remote/path`.
+
+    Returns:
+        The parsed volume mount.
+    """
 
     name, separator, mount_path = text.partition(":")
     if not name or not separator or not mount_path:
@@ -170,7 +300,14 @@ def parse_volume_mount(text: str) -> VolumeMount:
 def build_volume_map(
     volume_mounts: Iterable[VolumeMount],
 ) -> dict[str, modal.Volume | modal.CloudBucketMount]:
-    """Prepares saved folders for Modal."""
+    """Prepares saved folders for Modal.
+
+    Args:
+        volume_mounts: The saved folders to attach.
+
+    Returns:
+        Modal volumes keyed by remote path.
+    """
 
     volumes: dict[str, modal.Volume | modal.CloudBucketMount] = {}
     for mount in volume_mounts:
@@ -182,7 +319,15 @@ def build_volume_map(
 
 
 def list_handles(sandboxes: Iterable[modal.Sandbox], app_name: str) -> list[SandboxHandle]:
-    """Returns the remote computers in a simple list."""
+    """Returns the remote computers in a simple list.
+
+    Args:
+        sandboxes: Modal sandboxes to describe.
+        app_name: The Modal app name.
+
+    Returns:
+        The remote computer details.
+    """
 
     handles: list[SandboxHandle] = []
     for sandbox in sandboxes:
@@ -196,7 +341,16 @@ def handle_from_sandbox(
     app_name: str,
     name: str | None = None,
 ) -> SandboxHandle:
-    """Returns the name and ID for a remote computer."""
+    """Returns the name and ID for a remote computer.
+
+    Args:
+        sandbox: The Modal sandbox to describe.
+        app_name: The Modal app name.
+        name: The friendly sandbox name, if known.
+
+    Returns:
+        The remote computer details.
+    """
 
     sandbox.hydrate()
     return SandboxHandle(
