@@ -300,6 +300,30 @@ class ManagedSandbox:
         finally:
             sandbox.detach()
 
+    def logs(self, name: str | None = None, sandbox_id: str | None = None) -> CommandResult:
+        """Reads output from a stopped remote computer.
+
+        Args:
+            name: The friendly sandbox name.
+            sandbox_id: The Modal sandbox ID.
+
+        Returns:
+            The remote computer's output and final code.
+        """
+
+        sandbox = self._connect(name=name, sandbox_id=sandbox_id)
+        try:
+            returncode = sandbox.poll()
+            if returncode is None:
+                raise ValueError("Sandbox logs are available after the sandbox stops.")
+            return CommandResult(
+                returncode=returncode,
+                stdout=sandbox.stdout.read(),
+                stderr=sandbox.stderr.read(),
+            )
+        finally:
+            sandbox.detach()
+
     def terminate_all(self) -> list[SandboxHandle]:
         """Stops every remote computer this project started.
 

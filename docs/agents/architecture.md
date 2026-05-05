@@ -13,6 +13,7 @@ CLI / future API / future Modal Function
 Use this shape when adding behavior:
 
 - `mayproject/cli/`: argument parsing and user-facing command output.
+- `mayproject/cli/output.py`: shared CLI table, JSON, and status rendering.
 - `mayproject/workflows/`: product-level operations such as managed sandboxes.
 - `mayproject/primitives/`: reusable one-shot capabilities.
 - `mayproject/sandbox/`: Modal image, lifecycle, runner, fake runner, and shared types.

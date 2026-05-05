@@ -1,5 +1,4 @@
 import argparse
-import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -8,6 +7,15 @@ from time import sleep
 import modal
 
 from mayproject.config import load_config
+from mayproject.cli.output import (
+    handle_payload,
+    print_doctor,
+    print_handle,
+    print_handles,
+    print_inspection,
+    print_json,
+    print_terminated,
+)
 from mayproject.search import first_search_result
 from mayproject.urls import is_valid_url
 from mayproject.workflows.doctor import DoctorCheck, run_doctor
@@ -140,6 +148,14 @@ def run_command(
         print(f"Observation saved to {result.text_path.resolve()}")
         return 0
 
+    if args.action == "logs":
+        result = manager.logs(name=args.name, sandbox_id=args.id)
+        if result.stdout:
+            print(result.stdout, end="")
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr)
+        return result.returncode
+
     if args.action == "shell":
         return manager.shell(name=args.name, sandbox_id=args.id)
 
@@ -220,6 +236,9 @@ def build_parser(default_app_name: str = "my-app") -> argparse.ArgumentParser:
     screenshot.add_argument("--output-dir")
     screenshot.add_argument("target", nargs="+")
 
+    logs = subparsers.add_parser("logs")
+    add_sandbox_reference(logs)
+
     shell = subparsers.add_parser("shell")
     add_sandbox_reference(shell)
 
@@ -274,157 +293,6 @@ def positive_interval(text: str) -> float:
     return value
 
 
-def print_handle(label: str, handle: object) -> None:
-    """Prints one remote computer.
-
-    Args:
-        label: A short heading.
-        handle: The remote computer details.
-    """
-
-    print(label)
-    print(f"  id: {handle.object_id}")
-    print(f"  app: {handle.app_name}")
-    if handle.name:
-        print(f"  name: {handle.name}")
-    if handle.tags.get("image"):
-        print(f"  image: {handle.tags['image']}")
-    print(f"  returncode: {handle.returncode}")
-
-
-def print_handles(handles: list[object]) -> None:
-    """Prints remote computers as a table.
-
-    Args:
-        handles: Remote computers to show.
-    """
-
-    if not handles:
-        print("No managed sandboxes found")
-        return
-
-    rows = [
-        (
-            handle.name or handle.tags.get("name", "-"),
-            handle.tags.get("image", "-"),
-            "running" if handle.returncode is None else f"done:{handle.returncode}",
-            handle.object_id,
-        )
-        for handle in handles
-    ]
-    print_table(("Name", "Image", "State", "Sandbox ID"), rows)
-
-
-def sandbox_state(handle: object) -> str:
-    """Describes whether a remote computer is running.
-
-    Args:
-        handle: The remote computer details.
-
-    Returns:
-        A short state label for people to read.
-    """
-
-    return "running" if handle.returncode is None else f"done:{handle.returncode}"
-
-
-def handle_payload(handle: object) -> dict[str, object]:
-    """Builds a structured view of one remote computer.
-
-    Args:
-        handle: The remote computer details.
-
-    Returns:
-        A plain dictionary for JSON output.
-    """
-
-    name = handle.name or handle.tags.get("name")
-    return {
-        "name": name,
-        "sandbox_id": handle.object_id,
-        "app_name": handle.app_name,
-        "image": handle.tags.get("image"),
-        "state": sandbox_state(handle),
-        "returncode": handle.returncode,
-        "tags": dict(handle.tags),
-    }
-
-
-def print_json(payload: object) -> None:
-    """Prints structured output as formatted JSON.
-
-    Args:
-        payload: The JSON-compatible value to print.
-    """
-
-    print(json.dumps(payload, indent=2, sort_keys=True))
-
-
-def print_inspection(handle: object) -> None:
-    """Prints detailed information about one remote computer.
-
-    Args:
-        handle: The remote computer details.
-    """
-
-    name = handle.name or handle.tags.get("name", "-")
-    image = handle.tags.get("image", "-")
-    print_table(
-        ("Field", "Value"),
-        [
-            ("Name", name),
-            ("Sandbox ID", handle.object_id),
-            ("App name", handle.app_name),
-            ("Image", image),
-            ("State", sandbox_state(handle)),
-        ],
-    )
-
-    tag_rows = sorted(handle.tags.items())
-    print("\nTags")
-    if tag_rows:
-        print_table(("Tag", "Value"), tag_rows)
-    else:
-        print("(none)")
-
-
-def print_terminated(handles: list[object]) -> None:
-    """Prints the remote computers that were stopped.
-
-    Args:
-        handles: Remote computers that were stopped.
-    """
-
-    if not handles:
-        print("No managed sandboxes found")
-        return
-
-    rows = [
-        (
-            handle.name or handle.tags.get("name", "-"),
-            handle.tags.get("image", "-"),
-            handle.object_id,
-        )
-        for handle in handles
-    ]
-    print_table(("Name", "Image", "Sandbox ID"), rows)
-    print(f"Terminated {len(handles)} managed sandbox(es).")
-
-
-def print_doctor(checks: list[DoctorCheck]) -> None:
-    """Prints setup checks as a table.
-
-    Args:
-        checks: Setup checks to show.
-    """
-
-    rows = [
-        (check.name, "ok" if check.ok else "needs help", check.message)
-        for check in checks
-    ]
-    print_table(("Check", "Status", "Message"), rows)
-
-
 def watch_handles(
     manager: ManagedSandbox,
     interval: float,
@@ -459,35 +327,6 @@ def clear_terminal() -> None:
 
     sys.stdout.write("\033[2J\033[3J\033[H")
     sys.stdout.flush()
-
-
-def print_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> None:
-    """Prints rows with simple borders.
-
-    Args:
-        headers: The table column names.
-        rows: The table rows.
-    """
-
-    widths = [
-        max(len(header), *(len(row[index]) for row in rows))
-        for index, header in enumerate(headers)
-    ]
-    border = "+-" + "-+-".join("-" * width for width in widths) + "-+"
-    header = "| " + " | ".join(
-        text.ljust(widths[index]) for index, text in enumerate(headers)
-    ) + " |"
-
-    print(border)
-    print(header)
-    print(border)
-    for row in rows:
-        print(
-            "| "
-            + " | ".join(text.ljust(widths[index]) for index, text in enumerate(row))
-            + " |"
-        )
-    print(border)
 
 
 def friendly_error(exc: BaseException) -> str:

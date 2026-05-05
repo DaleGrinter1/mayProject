@@ -126,6 +126,9 @@ class FakeRemoteSandbox:
         object_id: str = "sb-123",
         result: CommandResult | None = None,
         tags: dict[str, str] | None = None,
+        returncode: int | None = None,
+        stdout: str = "",
+        stderr: str = "",
     ) -> None:
         """Creates a fake remote computer.
 
@@ -133,11 +136,17 @@ class FakeRemoteSandbox:
             object_id: The fake Modal sandbox ID.
             result: The command result to return from remote exec calls.
             tags: The fake labels attached to the sandbox.
+            returncode: The fake sandbox finish code.
+            stdout: The fake sandbox root process stdout.
+            stderr: The fake sandbox root process stderr.
         """
 
         self.object_id = object_id
         self.result = result or CommandResult(returncode=0, stdout="", stderr="")
         self.tags = tags or {"managed": "true"}
+        self.returncode = returncode
+        self.stdout = FakeStream(stdout)
+        self.stderr = FakeStream(stderr)
         self.filesystem = FakeFilesystem()
         self.commands: list[tuple[str, ...]] = []
         self.detached = False
@@ -161,10 +170,10 @@ class FakeRemoteSandbox:
         """Returns the fake sandbox state.
 
         Returns:
-            None because the fake sandbox is running by default.
+            The fake sandbox return code.
         """
 
-        return None
+        return self.returncode
 
     def exec(self, *command: str) -> FakeProcess:
         """Records a command and returns the fake process result.
@@ -519,6 +528,26 @@ def test_terminate_stops_and_detaches() -> None:
 
     assert result == 0
     assert remote.terminated
+    assert remote.detached
+
+
+def test_logs_reads_stopped_sandbox_output_and_detaches() -> None:
+    remote = FakeRemoteSandbox(returncode=4, stdout="out\n", stderr="err\n")
+    manager = ManagedSandbox(connector=FakeConnector(remote))
+
+    result = manager.logs(name="devbox")
+
+    assert result == CommandResult(returncode=4, stdout="out\n", stderr="err\n")
+    assert remote.detached
+
+
+def test_logs_rejects_running_sandbox_and_detaches() -> None:
+    remote = FakeRemoteSandbox(returncode=None)
+    manager = ManagedSandbox(connector=FakeConnector(remote))
+
+    with pytest.raises(ValueError, match="after the sandbox stops"):
+        manager.logs(name="devbox")
+
     assert remote.detached
 
 
@@ -955,6 +984,32 @@ def test_cli_screenshot_uses_id_and_resolves_search_terms(monkeypatch, capsys) -
     assert result == 0
     assert calls == [("https://example.com/search-result", None, "sb-123")]
     assert "Screenshot target: https://example.com/search-result" in output
+
+
+def test_cli_logs_prints_stdout_and_stderr(monkeypatch, capsys) -> None:
+    calls: list[tuple[str | None, str | None]] = []
+
+    class LogsManager:
+        def __init__(self, app_name: str) -> None:
+            self.app_name = app_name
+
+        def logs(
+            self,
+            name: str | None = None,
+            sandbox_id: str | None = None,
+        ) -> CommandResult:
+            calls.append((name, sandbox_id))
+            return CommandResult(returncode=5, stdout="out\n", stderr="err\n")
+
+    monkeypatch.setattr(sandbox_cli, "ManagedSandbox", LogsManager)
+
+    result = main(["logs", "--id", "sb-123"])
+
+    captured = capsys.readouterr()
+    assert result == 5
+    assert calls == [(None, "sb-123")]
+    assert captured.out == "out\n"
+    assert captured.err == "err\n"
 
 
 def test_cli_doctor_prints_checks(monkeypatch, capsys) -> None:

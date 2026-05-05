@@ -84,6 +84,7 @@ uv run may-sandbox list --watch
 uv run may-sandbox status --name devbox
 uv run may-sandbox inspect --name devbox
 uv run may-sandbox exec --name devbox -- python --version
+uv run may-sandbox logs --name devbox
 uv run may-sandbox shell --name devbox
 uv run may-sandbox terminate --name devbox
 ```
@@ -149,6 +150,18 @@ uv run may-sandbox inspect --id sb-... --json
 ```
 
 This is useful for scripts and future automation.
+
+## Logs
+
+Read stdout and stderr from a sandbox after its root process has stopped:
+
+```bash
+uv run may-sandbox logs --name devbox
+uv run may-sandbox logs --id sb-...
+```
+
+Logs are only read after a sandbox has stopped because Modal's stream reads wait
+for EOF. For command output while a sandbox is running, use `may-sandbox exec`.
 
 ## Images
 

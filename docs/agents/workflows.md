@@ -17,6 +17,7 @@ uv run may-sandbox create --name devbox --image dev
 uv run may-sandbox exec --name devbox -- python --version
 uv run may-sandbox copy-to --name devbox ./script.py /workspace/script.py
 uv run may-sandbox copy-from --name devbox /tmp/result.txt artifacts/result.txt
+uv run may-sandbox logs --name devbox
 uv run may-sandbox terminate --name devbox
 ```
 
@@ -29,3 +30,6 @@ Managed screenshots require a sandbox created with the `browser` image:
 uv run may-sandbox create --name browserbox --image browser
 uv run may-sandbox screenshot --name browserbox https://example.com
 ```
+
+`may-sandbox logs` reads stdout and stderr after a sandbox has stopped. Avoid
+reading logs from a running sandbox because Modal stream reads wait for EOF.
