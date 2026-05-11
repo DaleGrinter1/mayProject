@@ -16,21 +16,30 @@
 
 ## Common Commands
 
-- Run the app, once an entry point exists: `uv run python main.py`
+- Screenshot a URL: `uv run may-screenshot https://example.com`
+- Run a command in a sandbox: `uv run may-shell python --version`
+- Run a local Python script in a sandbox: `uv run may-python ./path/to/script.py`
 - Add a dependency: `uv add <package>`
 - Add a development dependency: `uv add --dev <package>`
 - Sync the environment: `uv sync`
 
 ## Testing and Validation
 
-- If tests are added later, document the test command here.
+- Run tests: `uv run pytest`
 - When changing Python code, run the narrowest useful validation command available.
-- If no tests or executable entry point exist yet, say that clearly in the final response.
 
 ## Documentation
 
 - Keep `README.md` aligned with the actual project behavior.
 - Document setup steps when adding dependencies, commands, or environment variables.
+
+## Additional Agent Context
+
+- Longer context for agents lives in `docs/agents/`.
+- Start with `docs/agents/README.md` when a task needs more background.
+- Use `docs/agents/architecture.md` for layering and ownership guidance.
+- Use `docs/agents/workflows.md` for command behavior and user-facing flows.
+- Use `docs/agents/testing.md` for local and opt-in Modal validation guidance.
 
 ## Codex Notes
 

@@ -9,6 +9,15 @@ text_path = sys.argv[3]
 
 
 def lines_for_items(items):
+    """Turns page items into short readable lines.
+
+    Args:
+        items: Links or buttons found on the page.
+
+    Returns:
+        Short lines for the page notes.
+    """
+
     lines = []
     for item in items[:50]:
         text = " ".join((item.get("text") or "").split())
@@ -55,4 +64,3 @@ with sync_playwright() as p:
     with open(text_path, "w", encoding="utf-8") as file:
         file.write("\n".join(observation))
     browser.close()
-

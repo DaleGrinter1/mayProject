@@ -1,84 +1,107 @@
-import shutil
-import unittest
 from pathlib import Path
-from uuid import uuid4
 
+import pytest
+
+from mayproject.primitives.browser import BrowserPrimitive
+from mayproject.primitives.python import PythonPrimitive
+from mayproject.primitives.repo import RepoPrimitive
 from mayproject.primitives.shell import ShellPrimitive
-from mayproject.urls import is_valid_url
-from mayproject.workflows.screenshot import capture_url
+from mayproject.sandbox.fake import FakeSandboxRunner
+from mayproject.sandbox.types import CommandResult, SandboxSpec
 
 
-TEST_TMP_ROOT = Path(".mayproject") / "test-tmp"
+class RunnerRecorder:
+    def __init__(self) -> None:
+        self.runners: list[FakeSandboxRunner] = []
+
+    def factory(self, spec: SandboxSpec) -> FakeSandboxRunner:
+        runner = FakeSandboxRunner(spec)
+        self.runners.append(runner)
+        return runner
 
 
-def workspace_temp_dir():
-    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
-    path = TEST_TMP_ROOT / uuid4().hex
-    path.mkdir()
-    return path
+def test_shell_primitive_rejects_empty_command() -> None:
+    with pytest.raises(ValueError, match="at least one argument"):
+        ShellPrimitive().run([])
 
 
-class UrlTests(unittest.TestCase):
-    def test_is_valid_url_accepts_http_and_https(self):
-        self.assertTrue(is_valid_url("https://example.com"))
-        self.assertTrue(is_valid_url("http://example.com/path"))
+def test_shell_primitive_executes_command_with_fake_runner() -> None:
+    recorder = RunnerRecorder()
 
-    def test_is_valid_url_rejects_non_web_urls(self):
-        self.assertFalse(is_valid_url("example.com"))
-        self.assertFalse(is_valid_url("file:///tmp/example.txt"))
+    result = ShellPrimitive(runner_factory=recorder.factory).run(["echo", "hello"])
 
-
-class ShellPrimitiveTests(unittest.TestCase):
-    def test_shell_rejects_empty_command(self):
-        with self.assertRaisesRegex(ValueError, "at least one argument"):
-            ShellPrimitive().run(())
+    assert result.returncode == 0
+    assert recorder.runners[0].commands == [("echo", "hello")]
+    assert recorder.runners[0].spec.tags == {"primitive": "shell"}
 
 
-class FakeBrowser:
-    def __init__(self, run_root: Path):
-        from mayproject.primitives.browser import BrowserCaptureResult
-        from mayproject.sandbox.results import Artifact, SandboxResult, create_sandbox_run
+def test_python_primitive_writes_code_and_executes_it() -> None:
+    recorder = RunnerRecorder()
 
-        self.run = create_sandbox_run("browser-capture", run_root=run_root, run_id="abc12345")
-        self.image_path = self.run.artifact_dir / "screenshot.png"
-        self.text_path = self.run.artifact_dir / "observation.txt"
-        result = SandboxResult(
-            run=self.run.complete("succeeded"),
-            status="succeeded",
-            output={"url": "https://example.com"},
-            artifacts=(
-                Artifact("screenshot", "image", self.image_path, "image/png"),
-                Artifact("observation", "text", self.text_path, "text/plain"),
+    PythonPrimitive(runner_factory=recorder.factory).run_code("print('hi')", "x")
+
+    runner = recorder.runners[0]
+    assert runner.writes == [("print('hi')", "/tmp/script.py")]
+    assert runner.commands == [("python", "/tmp/script.py", "x")]
+
+
+def test_browser_primitive_copies_script_and_outputs() -> None:
+    recorder = RunnerRecorder()
+
+    BrowserPrimitive(runner_factory=recorder.factory).capture_page(
+        "https://example.com",
+        Path("out.png"),
+        Path("out.txt"),
+    )
+
+    runner = recorder.runners[0]
+    assert runner.copied_from_local[0][0].name == "screenshot_page.py"
+    assert runner.copied_from_local[0][1] == "/tmp/screenshot.py"
+    assert runner.commands == [
+        (
+            "python",
+            "/tmp/screenshot.py",
+            "https://example.com",
+            "/tmp/screenshot.png",
+            "/tmp/observation.txt",
+        )
+    ]
+    assert runner.copied_to_local == [
+        ("/tmp/screenshot.png", Path("out.png")),
+        ("/tmp/observation.txt", Path("out.txt")),
+    ]
+
+
+def test_browser_primitive_raises_on_failed_capture() -> None:
+    def factory(spec: SandboxSpec) -> FakeSandboxRunner:
+        return FakeSandboxRunner(
+            spec,
+            command_handler=lambda command: CommandResult(
+                returncode=1,
+                stdout="",
+                stderr="boom",
             ),
         )
-        self.capture = BrowserCaptureResult(
-            url="https://example.com",
-            image_path=self.image_path,
-            text_path=self.text_path,
-            result=result,
+
+    with pytest.raises(RuntimeError, match="boom"):
+        BrowserPrimitive(runner_factory=factory).capture_page(
+            "https://example.com",
+            Path("out.png"),
+            Path("out.txt"),
         )
 
-    def capture_page(self, url: str):
-        return self.capture
 
+def test_repo_primitive_writes_clone_and_command_script() -> None:
+    recorder = RunnerRecorder()
 
-class ScreenshotWorkflowTests(unittest.TestCase):
-    def tearDown(self):
-        shutil.rmtree(TEST_TMP_ROOT, ignore_errors=True)
+    RepoPrimitive(runner_factory=recorder.factory).run_command(
+        "https://github.com/example/repo.git",
+        ["python", "-m", "pytest"],
+    )
 
-    def test_capture_url_returns_browser_result_paths(self):
-        temp_dir = workspace_temp_dir()
-        try:
-            browser = FakeBrowser(temp_dir)
-            result = capture_url("https://example.com", browser=browser)
-
-            self.assertEqual(result.status, "succeeded")
-            self.assertEqual(result.image_path.name, "screenshot.png")
-            self.assertEqual(result.text_path.name, "observation.txt")
-            self.assertEqual(result.run.run_id, "abc12345")
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    runner = recorder.runners[0]
+    script, remote_path = runner.writes[0]
+    assert remote_path == "/tmp/run_repo_command.sh"
+    assert "git clone --depth 1 'https://github.com/example/repo.git' '/tmp/repo'" in script
+    assert "'python' '-m' 'pytest'" in script
+    assert runner.commands == [("sh", "/tmp/run_repo_command.sh")]

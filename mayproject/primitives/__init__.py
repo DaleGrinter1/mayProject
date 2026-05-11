@@ -1,9 +1,15 @@
-from mayproject.primitives.browser import BrowserCaptureResult, BrowserPrimitive
-from mayproject.primitives.shell import ShellCommandResult, ShellPrimitive
+from mayproject.primitives.browser import BrowserConfig, BrowserPrimitive
+from mayproject.primitives.python import PythonConfig, PythonPrimitive
+from mayproject.primitives.repo import RepoConfig, RepoPrimitive
+from mayproject.primitives.shell import ShellConfig, ShellPrimitive
 
 __all__ = [
-    "BrowserCaptureResult",
+    "BrowserConfig",
     "BrowserPrimitive",
-    "ShellCommandResult",
+    "PythonConfig",
+    "PythonPrimitive",
+    "RepoConfig",
+    "RepoPrimitive",
+    "ShellConfig",
     "ShellPrimitive",
 ]

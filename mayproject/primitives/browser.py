@@ -1,113 +1,76 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from mayproject.sandbox.images import browser_image
-from mayproject.sandbox.runner import ModalSandboxRunner, SandboxSpec
-from mayproject.sandbox.results import (
-    DEFAULT_RUN_ROOT,
-    Artifact,
-    SandboxResult,
-    create_sandbox_run,
-)
+from mayproject.sandbox.images import get_image
+from mayproject.sandbox.runner import ModalSandboxRunner
+from mayproject.sandbox.types import RunnerFactory, SandboxSpec
 
 
 SCREENSHOT_SCRIPT_PATH = Path(__file__).parent / "scripts" / "screenshot_page.py"
 
 
 @dataclass(frozen=True)
-class BrowserCaptureResult:
-    url: str
-    image_path: Path
-    text_path: Path
-    result: SandboxResult
+class BrowserConfig:
+    """Stores where browser files live on the remote computer.
 
-    @property
-    def run(self):
-        return self.result.run
+    Attributes:
+        remote_script_path: Where the browser script is copied.
+        remote_image_path: Where the screenshot is saved remotely.
+        remote_text_path: Where the page notes are saved remotely.
+        timeout: How long the remote computer may run.
+        idle_timeout: How long the remote computer may sit unused.
+    """
 
-    @property
-    def status(self) -> str:
-        return self.result.status
-
-    def to_dict(self):
-        data = self.result.to_dict()
-        data["url"] = self.url
-        data["image_path"] = str(self.image_path)
-        data["text_path"] = str(self.text_path)
-        return data
+    remote_script_path: str = "/tmp/screenshot.py"
+    remote_image_path: str = "/tmp/screenshot.png"
+    remote_text_path: str = "/tmp/observation.txt"
+    timeout: int = 600
+    idle_timeout: int = 120
 
 
 @dataclass(frozen=True)
 class BrowserPrimitive:
-    app_name: str = "my-app"
-    run_root: Path = DEFAULT_RUN_ROOT
+    """Uses a remote browser to look at a web page.
 
-    def capture_page(self, url: str) -> BrowserCaptureResult:
-        run = create_sandbox_run(
-            "browser-capture",
-            run_root=self.run_root,
-            tags={"primitive": "browser", "workflow": "screenshot"},
-            metadata={"url": url},
-        )
-        image_path = run.artifact_dir / "screenshot.png"
-        text_path = run.artifact_dir / "observation.txt"
+    Attributes:
+        app_name: The Modal app name to use.
+        config: The browser settings.
+        runner_factory: Builds the remote computer runner.
+    """
+
+    app_name: str = "my-app"
+    config: BrowserConfig = BrowserConfig()
+    runner_factory: RunnerFactory = ModalSandboxRunner
+
+    def capture_page(self, url: str, image_path: Path, text_path: Path) -> None:
+        """Saves a screenshot and page notes for a web page.
+
+        Args:
+            url: The web page to open.
+            image_path: Where to save the screenshot on this computer.
+            text_path: Where to save the page notes on this computer.
+        """
 
         spec = SandboxSpec(
             app_name=self.app_name,
-            image=browser_image(),
+            image=get_image("browser"),
+            timeout=self.config.timeout,
+            idle_timeout=self.config.idle_timeout,
             tags={"primitive": "browser", "workflow": "screenshot"},
         )
 
-        with ModalSandboxRunner(spec) as runner:
-            runner.copy_from_local(SCREENSHOT_SCRIPT_PATH, "/tmp/screenshot.py")
-            command_result = runner.exec(
+        with self.runner_factory(spec) as runner:
+            runner.copy_from_local(SCREENSHOT_SCRIPT_PATH, self.config.remote_script_path)
+            result = runner.exec(
                 "python",
-                "/tmp/screenshot.py",
+                self.config.remote_script_path,
                 url,
-                "/tmp/screenshot.png",
-                "/tmp/observation.txt",
+                self.config.remote_image_path,
+                self.config.remote_text_path,
             )
 
-            if command_result.returncode != 0:
-                completed_run = run.complete("failed")
-                result = SandboxResult(
-                    run=completed_run,
-                    status="failed",
-                    output={"url": url, "returncode": command_result.returncode},
-                    stdout=command_result.stdout,
-                    stderr=command_result.stderr,
-                    error=f"Screenshot command failed with return code {command_result.returncode}",
-                )
-                result.write_json(run.artifact_dir / "result.json")
-                result.run.write_json(run.artifact_dir / "metadata.json")
-                return BrowserCaptureResult(
-                    url=url,
-                    image_path=image_path,
-                    text_path=text_path,
-                    result=result,
-                )
+            if result.returncode != 0:
+                raise RuntimeError(f"Screenshot failed in sandbox:\n{result.stderr}")
 
-            runner.copy_to_local("/tmp/screenshot.png", image_path)
-            runner.copy_to_local("/tmp/observation.txt", text_path)
-
-        artifacts = (
-            Artifact("screenshot", "image", image_path, "image/png"),
-            Artifact("observation", "text", text_path, "text/plain"),
-        )
-        completed_run = run.complete("succeeded")
-        result = SandboxResult(
-            run=completed_run,
-            status="succeeded",
-            output={"url": url},
-            artifacts=artifacts,
-            stdout=command_result.stdout,
-            stderr=command_result.stderr,
-        )
-        result.write_json(run.artifact_dir / "result.json")
-        result.run.write_json(run.artifact_dir / "metadata.json")
-        return BrowserCaptureResult(
-            url=url,
-            image_path=image_path,
-            text_path=text_path,
-            result=result,
-        )
+            runner.copy_to_local(self.config.remote_image_path, image_path)
+            runner.copy_to_local(self.config.remote_text_path, text_path)

@@ -1,4 +1,10 @@
 __pycache__/
 *.py[cod]
-.mayproject/
-screenshots/
+.pytest_cache/
+.venv/
+.DS_Store
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/screenshots/
+artifacts/screenshots/*
+!artifacts/screenshots/.gitkeep

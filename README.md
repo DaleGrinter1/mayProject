@@ -1,151 +1,195 @@
 # mayproject
 
-`mayproject` is a local-first Python toolkit for coordinating agent-friendly
-task sandboxes. Version 1 is intentionally small: trusted local Python callers
-define workflow tasks and agent roles, agents use typed primitives, and Modal
-provides the actual sandbox isolation.
+`mayproject` manages Modal sandboxes as small remote computers. It supports
+one-shot commands for quick work and `may-sandbox` commands for named,
+longer-lived sandboxes.
 
-The current layers are:
+Generated files belong under `artifacts/`. Screenshots use
+`artifacts/screenshots/` by default.
 
-- Workflow orchestration: define a task, assign agent roles, run role handlers,
-  and write an auditable workflow trace.
-- Browser capture primitive: open a URL in Playwright/Chromium, save a
-  screenshot, and save a text observation.
-- Shell command primitive: run a command in a Modal sandbox and capture stdout,
-  stderr, return code, metadata, and artifacts.
-
-Each workflow creates a run directory under `.mayproject/runs/`:
+## Project Layout
 
 ```text
-.mayproject/runs/<timestamp>-workflow-<objective-slug>-<short-id>/
-  workflow.json
-  events.jsonl
-  agents/
-    <agent-id>/
-```
-
-Each sandbox call also creates a run directory under `.mayproject/runs/`:
-
-```text
-.mayproject/runs/<timestamp>-<task-kind>-<short-id>/
-  metadata.json
-  result.json
-  ...task artifacts...
-```
-
-`.mayproject/` is ignored by Git because it contains local run output.
-
-## Project structure
-
-```text
-screenshot.py                  # thin CLI entry point for browser capture
 mayproject/
-  agents/base.py               # agent specs and typed outcomes
+  cli/                         # console script entry points
+  config.py                    # pyproject.toml settings
   search.py                    # search-term to URL resolution
   urls.py                      # URL helpers
-  workflows/coordinator.py     # sequential coordinator for agent handlers
-  workflows/state.py           # task, workflow, agent-run, and event models
-  workflows/screenshot.py      # compatibility workflow over BrowserPrimitive
-  primitives/browser.py        # browser capture primitive and result type
-  primitives/shell.py          # shell command primitive and result type
-  primitives/scripts/          # scripts copied into sandbox filesystems
+  workflows/doctor.py          # local setup checks
+  workflows/screenshot.py      # one-shot screenshot workflow
+  workflows/sandbox.py         # named Modal sandbox workflow
+  primitives/browser.py        # reusable browser sandbox primitive
+  primitives/python.py         # reusable Python script/code primitive
+  primitives/repo.py           # reusable clone-and-run repository primitive
+  primitives/shell.py          # reusable shell command sandbox primitive
+  sandbox/fake.py              # fake runner for local primitive tests
   sandbox/images.py            # Modal image definitions
-  sandbox/results.py           # shared run, artifact, and result models
   sandbox/runner.py            # Modal sandbox lifecycle and command runner
+  sandbox/types.py             # Pydantic models and shared runner protocol
+tests/                         # local tests plus opt-in Modal integration tests
 ```
+
+Runtime dependencies are Modal for remote computers and Pydantic for shared
+sandbox data models.
 
 The intended layering is:
 
 ```text
-CLI / local scripts
-  -> workflow coordinator
-  -> agent role handlers
-  -> primitives
+CLI / future API / future Modal Function
+  -> workflow
+  -> primitive
   -> sandbox runner
   -> Modal Sandbox
 ```
 
-## Python API
+## Configuration
 
-```python
-from mayproject.agents import AgentOutcome, AgentSpec
-from mayproject.primitives.browser import BrowserPrimitive
-from mayproject.primitives.shell import ShellPrimitive
-from mayproject.workflows import AutomationTask, WorkflowCoordinator
+Defaults live in `pyproject.toml`:
 
-task = AutomationTask("Research example.com and capture evidence")
-agents = (
-    AgentSpec("researcher", "Researcher", allowed_primitives=("browser",)),
-    AgentSpec("verifier", "Verifier", allowed_primitives=("shell",)),
-)
-
-def researcher(context):
-    browser_result = BrowserPrimitive().capture_page("https://example.com")
-    return AgentOutcome(
-        "succeeded",
-        output={"url": browser_result.url},
-        sandbox_runs=(browser_result.run,),
-    )
-
-def verifier(context):
-    shell_result = ShellPrimitive().run(("python", "--version"))
-    return AgentOutcome(
-        "succeeded" if shell_result.returncode == 0 else "failed",
-        output={"returncode": shell_result.returncode},
-        sandbox_runs=(shell_result.run,),
-    )
-
-workflow = WorkflowCoordinator(agents).run(
-    task,
-    {"researcher": researcher, "verifier": verifier},
-)
-print(workflow.status)
-print(workflow.artifact_dir)
+```toml
+[tool.mayproject]
+app_name = "my-app"
+artifacts_dir = "artifacts"
 ```
 
-Primitives can also be called directly:
+The `--app-name` flag overrides the configured app name for `may-sandbox`
+commands.
 
-```python
-from mayproject.primitives.browser import BrowserPrimitive
-from mayproject.primitives.shell import ShellPrimitive
+## One-Shot Commands
 
-browser_result = BrowserPrimitive().capture_page("https://example.com")
-print(browser_result.status)
-print(browser_result.image_path)
-print(browser_result.text_path)
-print(browser_result.run.artifact_dir)
-
-shell_result = ShellPrimitive().run(("python", "--version"))
-print(shell_result.returncode)
-print(shell_result.stdout)
-print(shell_result.run.artifact_dir)
-```
-
-The public API is still local and method-oriented in v1. There is no HTTP
-server, LLM provider integration, task registry, auth layer, quota system, or
-database yet.
-
-## CLI usage
+Use one-shot commands when you want a temporary sandbox to do one job and then
+go away:
 
 ```bash
-uv run python screenshot.py https://example.com
-uv run python screenshot.py "example search term"
+uv run may-screenshot https://example.com
+uv run may-screenshot "example search term"
+uv run may-shell python --version
+uv run may-python ./path/to/script.py
 ```
 
-`screenshot.py` screenshots the input directly when it is a valid `http` or
-`https` URL. Otherwise, it searches DuckDuckGo and screenshots the first result.
-The first Modal browser run may take longer while Modal builds the image.
+`may-screenshot` screenshots a valid `http` or `https` URL directly. Otherwise,
+it searches DuckDuckGo and screenshots the first result. Each run saves a PNG
+and matching text observation in `artifacts/screenshots/`.
 
-## Validation
+## Managed Sandboxes
 
-Pure local tests do not require Modal:
+Use `may-sandbox` when you want a named remote computer that can run repeated
+commands, hold copied files, attach volumes, or open an interactive shell.
 
 ```bash
-uv run python -m unittest
+uv run may-sandbox doctor
+uv run may-sandbox create --name devbox --image dev --volume my-volume:/workspace/data
+uv run may-sandbox list
+uv run may-sandbox list --watch
+uv run may-sandbox status --name devbox
+uv run may-sandbox inspect --name devbox
+uv run may-sandbox exec --name devbox -- python --version
+uv run may-sandbox logs --name devbox
+uv run may-sandbox shell --name devbox
+uv run may-sandbox terminate --name devbox
 ```
 
-Modal integration is manual for now:
+To stop every sandbox started by this project:
 
 ```bash
-uv run python screenshot.py https://example.com
+uv run may-sandbox terminate-all
 ```
+
+## Files
+
+Copy local files into a sandbox:
+
+```bash
+uv run may-sandbox copy-to --name devbox ./script.py /workspace/script.py
+uv run may-sandbox put --name devbox ./script.py /workspace/script.py
+```
+
+Copy remote files back into `artifacts/`:
+
+```bash
+mkdir -p artifacts
+uv run may-sandbox copy-from --name devbox /tmp/result.txt artifacts/result.txt
+uv run may-sandbox get --id sb-... /tmp/result.txt artifacts/result.txt
+```
+
+`put` is an alias for `copy-to`; `get` is an alias for `copy-from`.
+
+## Screenshots
+
+Run a screenshot in a new temporary sandbox:
+
+```bash
+uv run may-screenshot https://example.com
+```
+
+Run a screenshot inside an existing managed sandbox:
+
+```bash
+uv run may-sandbox create --name browserbox --image browser
+uv run may-sandbox screenshot --name browserbox https://example.com
+uv run may-sandbox screenshot --id sb-... "example search term"
+```
+
+Managed screenshots need a sandbox created with the `browser` image because
+they use Playwright and Chromium.
+
+Choose a different local output folder:
+
+```bash
+uv run may-sandbox screenshot --name browserbox --output-dir artifacts/custom-shots https://example.com
+```
+
+## Structured Output
+
+Use `--json` with commands that describe sandboxes:
+
+```bash
+uv run may-sandbox list --json
+uv run may-sandbox status --name devbox --json
+uv run may-sandbox inspect --id sb-... --json
+```
+
+This is useful for scripts and future automation.
+
+## Logs
+
+Read stdout and stderr from a sandbox after its root process has stopped:
+
+```bash
+uv run may-sandbox logs --name devbox
+uv run may-sandbox logs --id sb-...
+```
+
+Logs are only read after a sandbox has stopped because Modal's stream reads wait
+for EOF. For command output while a sandbox is running, use `may-sandbox exec`.
+
+## Images
+
+Available sandbox images:
+
+- `python`: a small Python 3.13 image.
+- `browser`: the Python image with Playwright and Chromium.
+- `dev`: the Python image with everyday coding tools like `git`, `curl`, and `uv`.
+
+The first run may take longer while Modal builds each sandbox image.
+
+## Testing
+
+Run the local test suite:
+
+```bash
+uv run pytest
+```
+
+The default tests validate parsing, workflow composition, primitive commands,
+Pydantic models, config loading, and fake-runner behavior without launching
+Modal sandboxes.
+
+Run the opt-in real Modal integration tests:
+
+```bash
+MAYPROJECT_RUN_MODAL_TESTS=1 uv run pytest tests/test_modal_integration.py
+```
+
+Those tests create real sandboxes, copy files in and out through `artifacts/`,
+and terminate the sandboxes afterward.

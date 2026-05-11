@@ -1,106 +1,65 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
 
-from mayproject.sandbox.images import python_image
-from mayproject.sandbox.runner import ModalSandboxRunner, SandboxSpec
-from mayproject.sandbox.results import (
-    DEFAULT_RUN_ROOT,
-    Artifact,
-    SandboxResult,
-    create_sandbox_run,
-)
+from mayproject.sandbox.images import get_image
+from mayproject.sandbox.runner import ModalSandboxRunner
+from mayproject.sandbox.types import CommandResult, RunnerFactory, SandboxSpec
 
 
 @dataclass(frozen=True)
-class ShellCommandResult:
-    command: tuple[str, ...]
-    returncode: int
-    stdout: str
-    stderr: str
-    result: SandboxResult
+class ShellConfig:
+    """Stores the basic limits for a shell command.
 
-    @property
-    def run(self):
-        return self.result.run
+    Attributes:
+        timeout: How long the remote computer may run.
+        idle_timeout: How long the remote computer may sit unused.
+    """
 
-    @property
-    def status(self) -> str:
-        return self.result.status
-
-    def to_dict(self):
-        data = self.result.to_dict()
-        data["command"] = list(self.command)
-        data["returncode"] = self.returncode
-        return data
+    timeout: int = 600
+    idle_timeout: int = 120
 
 
 @dataclass(frozen=True)
 class ShellPrimitive:
+    """Runs one command on a remote computer.
+
+    Attributes:
+        app_name: The Modal app name to use.
+        config: The shell run settings.
+        runner_factory: Builds the remote computer runner.
+    """
+
     app_name: str = "my-app"
-    run_root: Path = DEFAULT_RUN_ROOT
+    config: ShellConfig = ShellConfig()
+    runner_factory: RunnerFactory = ModalSandboxRunner
 
     def run(
         self,
         command: Sequence[str],
-        timeout: int = 600,
-        idle_timeout: int = 120,
-    ) -> ShellCommandResult:
+        timeout: int | None = None,
+        idle_timeout: int | None = None,
+    ) -> CommandResult:
+        """Runs the command and returns what it printed.
+
+        Args:
+            command: The command and its arguments.
+            timeout: A one-time limit for this command.
+            idle_timeout: A one-time idle limit for this command.
+
+        Returns:
+            What the remote command printed and how it finished.
+        """
+
         if not command:
             raise ValueError("Shell command must contain at least one argument")
 
-        command_tuple = tuple(command)
-        run = create_sandbox_run(
-            "shell-command",
-            run_root=self.run_root,
-            tags={"primitive": "shell"},
-            metadata={
-                "command": list(command_tuple),
-                "timeout": timeout,
-                "idle_timeout": idle_timeout,
-            },
-        )
         spec = SandboxSpec(
             app_name=self.app_name,
-            image=python_image(),
-            timeout=timeout,
-            idle_timeout=idle_timeout,
+            image=get_image("python"),
+            timeout=timeout or self.config.timeout,
+            idle_timeout=idle_timeout or self.config.idle_timeout,
             tags={"primitive": "shell"},
         )
 
-        with ModalSandboxRunner(spec) as runner:
-            command_result = runner.exec(*command_tuple)
-
-        stdout_path = run.artifact_dir / "stdout.txt"
-        stderr_path = run.artifact_dir / "stderr.txt"
-        stdout_path.write_text(command_result.stdout, encoding="utf-8")
-        stderr_path.write_text(command_result.stderr, encoding="utf-8")
-
-        status = "succeeded" if command_result.returncode == 0 else "failed"
-        completed_run = run.complete(status)
-        result = SandboxResult(
-            run=completed_run,
-            status=status,
-            output={
-                "command": list(command_tuple),
-                "returncode": command_result.returncode,
-            },
-            artifacts=(
-                Artifact("stdout", "text", stdout_path, "text/plain"),
-                Artifact("stderr", "text", stderr_path, "text/plain"),
-            ),
-            stdout=command_result.stdout,
-            stderr=command_result.stderr,
-            error=None
-            if command_result.returncode == 0
-            else f"Shell command failed with return code {command_result.returncode}",
-        )
-        result.write_json(run.artifact_dir / "result.json")
-        result.run.write_json(run.artifact_dir / "metadata.json")
-        return ShellCommandResult(
-            command=command_tuple,
-            returncode=command_result.returncode,
-            stdout=command_result.stdout,
-            stderr=command_result.stderr,
-            result=result,
-        )
+        with self.runner_factory(spec) as runner:
+            return runner.exec(*command)

@@ -5,11 +5,21 @@ from mayproject.urls import is_valid_url
 from mayproject.workflows.screenshot import capture_url
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        raise SystemExit("Usage: uv run python screenshot.py <url or search terms>")
+def main(argv: list[str] | None = None) -> int:
+    """Screenshots a web page or search result.
 
-    text = " ".join(sys.argv[1:])
+    Args:
+        argv: Optional command-line words.
+
+    Returns:
+        Zero when the screenshot is saved.
+    """
+
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        raise SystemExit("Usage: may-screenshot <url or search terms>")
+
+    text = " ".join(argv)
     url = text if is_valid_url(text) else first_search_result(text)
     print(f"Screenshot target: {url}")
 
@@ -18,3 +28,8 @@ if __name__ == "__main__":
     print(f"Artifacts: {result.run.artifact_dir.resolve()}")
     print(f"Screenshot saved to {result.image_path.resolve()}")
     print(f"Observation saved to {result.text_path.resolve()}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
