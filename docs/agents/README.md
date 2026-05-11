@@ -8,3 +8,4 @@ Suggested reading:
 - `architecture.md`: how the package is layered.
 - `workflows.md`: command behavior and user-facing flows.
 - `testing.md`: local and opt-in Modal validation.
+- `authoring.md`: contract for writing pluggable workflow agents.

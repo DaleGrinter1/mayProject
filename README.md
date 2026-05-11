@@ -65,6 +65,8 @@ uv run may-screenshot https://example.com
 uv run may-screenshot "example search term"
 uv run may-shell python --version
 uv run may-python ./path/to/script.py
+uv run may-agent list
+uv run may-agent run "Package the agent API"
 ```
 
 `may-screenshot` screenshots a valid `http` or `https` URL directly. Otherwise,

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from mayproject.sandbox.results import Artifact, SandboxRun
+
+if TYPE_CHECKING:
+    from mayproject.workflows.coordinator import AgentContext
 
 
 @dataclass(frozen=True)
 class AgentSpec:
+    """Describes an agent that can participate in a workflow."""
+
     agent_id: str
     role: str
     instructions: str = ""
@@ -28,6 +33,8 @@ class AgentSpec:
 
 @dataclass(frozen=True)
 class AgentOutcome:
+    """Describes what an agent produced while handling a task."""
+
     status: str
     output: dict[str, Any] = field(default_factory=dict)
     artifacts: tuple[Artifact, ...] = ()
@@ -42,3 +49,13 @@ class AgentOutcome:
             "sandbox_runs": [run.to_dict() for run in self.sandbox_runs],
             "error": self.error,
         }
+
+
+class Agent(Protocol):
+    """Contract implemented by pluggable workflow agents."""
+
+    spec: AgentSpec
+
+    def run(self, context: AgentContext) -> AgentOutcome:
+        """Runs this agent for one workflow task."""
+        ...

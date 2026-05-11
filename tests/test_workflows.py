@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 
-from mayproject.agents import AgentOutcome, AgentSpec
+from mayproject.agents import AgentOutcome, AgentRegistry, AgentSpec, EchoAgent
 from mayproject.workflows import AutomationTask, WorkflowCoordinator, create_workflow_run
 
 
@@ -87,6 +87,38 @@ class WorkflowCoordinatorTests(unittest.TestCase):
             self.assertIn("No handler", workflow.agent_runs[0].error)
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_coordinator_runs_registered_agents(self):
+        temp_dir = workspace_temp_dir()
+        try:
+            registry = AgentRegistry([EchoAgent()])
+            task = AutomationTask(
+                "Package the agent API",
+                task_id="task-1",
+                inputs={"audience": "agent authors"},
+            )
+
+            workflow = WorkflowCoordinator.from_registry(registry, run_root=temp_dir).run(
+                task
+            )
+
+            self.assertEqual(workflow.status, "succeeded")
+            self.assertEqual(workflow.agent_runs[0].agent.agent_id, "echo")
+            self.assertEqual(
+                workflow.agent_runs[0].output["objective"],
+                "Package the agent API",
+            )
+            artifact = workflow.agent_runs[0].artifacts[0]
+            self.assertEqual(artifact.name, "echo")
+            self.assertTrue(artifact.path.exists())
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_registry_rejects_duplicate_agent_ids(self):
+        registry = AgentRegistry([EchoAgent()])
+
+        with self.assertRaisesRegex(ValueError, "already registered"):
+            registry.register(EchoAgent())
 
 
 if __name__ == "__main__":

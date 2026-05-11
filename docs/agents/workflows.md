@@ -10,6 +10,18 @@ uv run may-shell python --version
 uv run may-python ./path/to/script.py
 ```
 
+Agent workflow commands run registered local agents:
+
+```bash
+uv run may-agent list
+uv run may-agent run "Package the agent API"
+uv run may-agent run --agent echo --input audience=agent-authors "Package the agent API"
+```
+
+Workflow agents receive sandbox-backed tools through `context.capabilities`.
+Agents declare the tools they need with `allowed_primitives`, and the context
+checks that declaration before running shell, Python, or browser work.
+
 Managed sandbox commands operate on named remote computers:
 
 ```bash

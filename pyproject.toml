@@ -16,6 +16,7 @@ requires = [
 build-backend = "hatchling.build"
 
 [project.scripts]
+may-agent = "mayproject.cli.agent:main"
 may-python = "mayproject.cli.python:main"
 may-screenshot = "mayproject.cli.screenshot:main"
 may-sandbox = "mayproject.cli.sandbox:main"

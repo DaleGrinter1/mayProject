@@ -4,10 +4,11 @@ import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mayproject.agents.base import AgentOutcome, AgentSpec
 from mayproject.sandbox.results import DEFAULT_RUN_ROOT, Artifact, SandboxRun
+from mayproject.workflows.capabilities import AgentCapabilities
 from mayproject.workflows.state import (
     AgentRun,
     AutomationTask,
@@ -15,6 +16,9 @@ from mayproject.workflows.state import (
     WorkflowRun,
     create_workflow_run,
 )
+
+if TYPE_CHECKING:
+    from mayproject.agents.registry import AgentRegistry
 
 
 AgentHandler = Callable[["AgentContext"], AgentOutcome]
@@ -26,6 +30,7 @@ class AgentContext:
     agent: AgentSpec
     workflow: WorkflowRun
     artifact_dir: Path
+    capabilities: AgentCapabilities
     emit_event: Callable[[str, dict[str, Any]], WorkflowEvent]
 
 
@@ -34,15 +39,28 @@ class WorkflowCoordinator:
         self,
         agents: Iterable[AgentSpec],
         run_root: Path = DEFAULT_RUN_ROOT,
+        registry: AgentRegistry | None = None,
     ) -> None:
         self.agents = tuple(agents)
         self.run_root = run_root
+        self.registry = registry
+
+    @classmethod
+    def from_registry(
+        cls,
+        registry: AgentRegistry,
+        run_root: Path = DEFAULT_RUN_ROOT,
+    ) -> "WorkflowCoordinator":
+        """Builds a coordinator from registered pluggable agents."""
+
+        return cls(registry.specs(), run_root=run_root, registry=registry)
 
     def run(
         self,
         task: AutomationTask,
-        handlers: dict[str, AgentHandler],
+        handlers: dict[str, AgentHandler] | None = None,
     ) -> WorkflowRun:
+        handlers = handlers or self._registry_handlers()
         workflow = create_workflow_run(task, run_root=self.run_root)
         workflow.write_json()
         self._append_event(workflow, "workflow.started", {"task": task.to_dict()})
@@ -79,6 +97,11 @@ class WorkflowCoordinator:
         self._append_event(workflow, "workflow.completed", {"status": status})
         return workflow
 
+    def _registry_handlers(self) -> dict[str, AgentHandler]:
+        if self.registry is None:
+            return {}
+        return self.registry.handlers()
+
     def _run_agent_handler(
         self,
         task: AutomationTask,
@@ -102,6 +125,10 @@ class WorkflowCoordinator:
             agent=agent,
             workflow=workflow,
             artifact_dir=agent_dir,
+            capabilities=AgentCapabilities(
+                artifact_dir=agent_dir,
+                allowed_primitives=agent.allowed_primitives,
+            ),
             emit_event=emit_event,
         )
 
