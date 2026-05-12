@@ -1,12 +1,22 @@
 [project]
 name = "agent-sandbox"
 version = "0.1.0"
-description = "Add your description here"
+description = "Modal-backed sandbox tools for agent harnesses"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "modal>=1.4.2",
     "pydantic>=2.13.3",
+]
+keywords = [
+    "agents",
+    "modal",
+    "sandbox",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
 [build-system]

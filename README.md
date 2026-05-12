@@ -28,9 +28,21 @@ shot_result = tools.screenshot("https://example.com")
 ```
 
 Each tool call returns a structured result with `status`, `returncode`,
-`stdout`, `stderr`, `artifacts`, `metadata`, and `error`. SDK calls create
-temporary per-task sandboxes by default. The harness owns orchestration,
-memory, planning, and agent policy; this package owns sandbox execution.
+`stdout`, `stderr`, `artifacts`, `metadata`, `error`, timing fields, and
+optional run-recording paths. SDK calls create temporary per-task sandboxes by
+default. The harness owns orchestration, memory, planning, and agent policy;
+this package owns sandbox execution.
+
+Enable local run records while debugging a harness:
+
+```python
+tools = SandboxTools(
+    policy=SandboxToolPolicy(allowed_tools=("shell",)),
+    record_runs=True,
+)
+```
+
+Recorded runs are written under `.agent-sandbox/runs/`.
 
 ## Project Layout
 
@@ -83,12 +95,20 @@ go away:
 ```bash
 uv run agent-sandbox-screenshot https://example.com
 uv run agent-sandbox-screenshot "example search term"
-uv run agent-sandbox-shell python --version
+uv run agent-sandbox-shell -- python --version
 uv run agent-sandbox-python ./path/to/script.py
 ```
 
 `agent-sandbox-screenshot` screenshots a valid `http` or `https` URL directly.
 Otherwise, it searches DuckDuckGo and screenshots the first result.
+
+One-shot commands also support `--json` and `--record-run`:
+
+```bash
+uv run agent-sandbox-shell --json -- python --version
+uv run agent-sandbox-python --json ./path/to/script.py
+uv run agent-sandbox-screenshot --json https://example.com
+```
 
 ## Managed Sandboxes
 
@@ -155,6 +175,13 @@ uv run agent-sandbox inspect --id sb-... --json
 ```
 
 This is useful for scripts and future automation.
+
+## Documentation
+
+- `docs/sdk.md`: SDK contract, result shape, and run recording.
+- `docs/cli.md`: one-shot and managed sandbox CLI behavior.
+- `docs/backend.md`: Modal backend boundary and future backend guidance.
+- `examples/`: small harness-style SDK examples.
 
 ## Images
 

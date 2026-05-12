@@ -1,10 +1,11 @@
 """Tests for the public SandboxTools API used by external harnesses."""
 
+import json
 from pathlib import Path
 
 import pytest
 
-from agent_sandbox import SandboxToolPolicy, SandboxTools
+from agent_sandbox import SandboxToolPolicy, SandboxTools, ToolResult
 from agent_sandbox.sandbox.types import CommandResult
 
 
@@ -90,6 +91,36 @@ def test_sandbox_tools_returns_structured_shell_result() -> None:
     assert result.to_dict()["artifacts"] == []
 
 
+def test_tool_result_to_dict_is_public_contract() -> None:
+    """Verify ToolResult serializes every stable public field."""
+
+    result = ToolResult(
+        status="succeeded",
+        returncode=0,
+        stdout="out",
+        stderr="",
+        metadata={"tool": "shell"},
+        duration_ms=5,
+        run_id="abc123",
+        run_dir=Path(".agent-sandbox/runs/example"),
+    )
+
+    assert result.to_dict() == {
+        "artifacts": [],
+        "completed_at": None,
+        "duration_ms": 5,
+        "error": None,
+        "metadata": {"tool": "shell"},
+        "returncode": 0,
+        "run_dir": ".agent-sandbox/runs/example",
+        "run_id": "abc123",
+        "started_at": None,
+        "status": "succeeded",
+        "stderr": "",
+        "stdout": "out",
+    }
+
+
 def test_sandbox_tools_marks_nonzero_commands_failed() -> None:
     """Verify nonzero command return codes become failed tool results."""
 
@@ -138,3 +169,30 @@ def test_sandbox_tools_screenshot_returns_artifacts(tmp_path: Path) -> None:
         "screenshot",
         "observation",
     ]
+
+
+def test_sandbox_tools_can_record_shell_runs(tmp_path: Path) -> None:
+    """Verify optional run recording writes result and stream files.
+
+    Args:
+        tmp_path: Pytest-provided temporary directory for run outputs.
+    """
+
+    tools = SandboxTools(
+        policy=SandboxToolPolicy(allowed_tools=("shell",)),
+        shell_primitive=FakeShellPrimitive(),
+        record_runs=True,
+        run_root=tmp_path,
+    )
+
+    result = tools.shell(["python", "--version"])
+
+    assert result.run_id is not None
+    assert result.run_dir is not None
+    assert result.started_at is not None
+    assert result.completed_at is not None
+    assert result.duration_ms is not None
+    assert (result.run_dir / "stdout.txt").read_text(encoding="utf-8") == "ok\n"
+    payload = json.loads((result.run_dir / "result.json").read_text(encoding="utf-8"))
+    assert payload["run_id"] == result.run_id
+    assert payload["status"] == "succeeded"
