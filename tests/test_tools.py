@@ -145,6 +145,48 @@ def test_sandbox_tools_rejects_disallowed_tools() -> None:
         tools.shell(["python", "--version"])
 
 
+def test_sandbox_tools_rejects_disallowed_shell_command() -> None:
+    """Verify shell command allowlists are enforced before sandbox startup."""
+
+    tools = SandboxTools(
+        policy=SandboxToolPolicy(
+            allowed_tools=("shell",),
+            allowed_shell_commands=("python",),
+        ),
+        shell_primitive=FakeShellPrimitive(),
+    )
+
+    with pytest.raises(PermissionError, match="Shell command 'bash'"):
+        tools.shell(["bash", "-lc", "echo no"])
+
+
+def test_sandbox_tools_rejects_shell_timeout_above_policy() -> None:
+    """Verify timeout limits are enforced before sandbox startup."""
+
+    tools = SandboxTools(
+        policy=SandboxToolPolicy(allowed_tools=("shell",), max_timeout=10),
+        shell_primitive=FakeShellPrimitive(),
+    )
+
+    with pytest.raises(PermissionError, match="exceeds policy maximum"):
+        tools.shell(["python", "--version"], timeout=30)
+
+
+def test_sandbox_tools_rejects_disallowed_browser_domain() -> None:
+    """Verify browser domain allowlists are enforced before sandbox startup."""
+
+    tools = SandboxTools(
+        policy=SandboxToolPolicy(
+            allowed_tools=("browser",),
+            allowed_browser_domains=("example.com",),
+        ),
+        browser_primitive=FakeBrowserPrimitive(),
+    )
+
+    with pytest.raises(PermissionError, match="not allowed"):
+        tools.screenshot("https://openai.com")
+
+
 def test_sandbox_tools_screenshot_returns_artifacts(tmp_path: Path) -> None:
     """Verify screenshot calls return artifact records and convenience paths.
 

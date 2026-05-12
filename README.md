@@ -4,6 +4,9 @@
 It gives another project a small Python API for running isolated per-task work,
 plus CLI commands for local debugging and named sandbox administration.
 
+Use it when you are building an agent harness and need controlled shell,
+Python, or browser execution in isolated Modal sandboxes.
+
 Generated files belong under `artifacts/`. Screenshots use
 `artifacts/screenshots/` by default.
 
@@ -18,7 +21,12 @@ from agent_sandbox import SandboxToolPolicy, SandboxTools
 
 tools = SandboxTools(
     app_name="my-app",
-    policy=SandboxToolPolicy(allowed_tools=("shell", "python", "browser")),
+    policy=SandboxToolPolicy(
+        allowed_tools=("shell", "python", "browser"),
+        allowed_shell_commands=("python", "pytest"),
+        allowed_browser_domains=("example.com",),
+        max_timeout=60,
+    ),
 )
 
 shell_result = tools.shell(["python", "--version"])
@@ -217,8 +225,30 @@ This is useful for scripts and future automation.
 
 - `docs/sdk.md`: SDK contract, result shape, and run recording.
 - `docs/cli.md`: one-shot and managed sandbox CLI behavior.
+- `docs/harness-integration.md`: guidance for agent harness authors.
+- `docs/security.md`: safety responsibilities and tool boundaries.
 - `docs/backend.md`: Modal backend boundary and future backend guidance.
 - `examples/`: small harness-style SDK examples.
+
+Try the fuller harness example when checking SDK ergonomics:
+
+```bash
+uv run python examples/harness_runner.py shell -- python --version
+uv run python examples/harness_runner.py python-code "print('hello from sandbox')"
+uv run python examples/harness_runner.py screenshot https://example.com
+```
+
+Test harness orchestration without Modal:
+
+```bash
+uv run python examples/fake_primitives.py
+```
+
+Run the real golden-path demo after Modal is configured:
+
+```bash
+uv run python examples/golden_path_demo.py --record-run
+```
 
 ## Images
 

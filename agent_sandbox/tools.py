@@ -55,15 +55,76 @@ class SandboxToolPolicy:
     Attributes:
         allowed_tools: Tool names the harness has granted. Supported names are
             `shell`, `python`, and `browser`.
+        allowed_shell_commands: Optional executable names that shell calls may
+            run. When empty, any shell command is allowed after `shell` is
+            granted.
+        allowed_browser_domains: Optional hostnames that browser calls may
+            capture. When empty, any URL is allowed after `browser` is granted.
+        max_timeout: Optional maximum timeout a tool call may request.
+        max_idle_timeout: Optional maximum idle timeout a shell call may request.
     """
 
     allowed_tools: tuple[str, ...] = ()
+    allowed_shell_commands: tuple[str, ...] = ()
+    allowed_browser_domains: tuple[str, ...] = ()
+    max_timeout: int | None = None
+    max_idle_timeout: int | None = None
 
     def require(self, tool: str) -> None:
         if tool not in self.allowed_tools:
             allowed = ", ".join(self.allowed_tools) or "none"
             raise PermissionError(
                 f"Sandbox tool '{tool}' is not allowed. Allowed tools: {allowed}."
+            )
+
+    def require_shell_command(self, command: Sequence[str]) -> None:
+        self.require("shell")
+        if not self.allowed_shell_commands:
+            return
+        executable = command[0] if command else ""
+        if executable not in self.allowed_shell_commands:
+            allowed = ", ".join(self.allowed_shell_commands)
+            raise PermissionError(
+                f"Shell command '{executable or '<empty>'}' is not allowed. "
+                f"Allowed commands: {allowed}."
+            )
+
+    def require_browser_url(self, url: str) -> None:
+        self.require("browser")
+        if not self.allowed_browser_domains:
+            return
+        host = urlparse(url).hostname or ""
+        if not any(
+            host == domain or host.endswith(f".{domain}")
+            for domain in self.allowed_browser_domains
+        ):
+            allowed = ", ".join(self.allowed_browser_domains)
+            raise PermissionError(
+                f"Browser URL host '{host or '<empty>'}' is not allowed. "
+                f"Allowed domains: {allowed}."
+            )
+
+    def require_timeout(
+        self,
+        timeout: int | None,
+        idle_timeout: int | None = None,
+    ) -> None:
+        if (
+            timeout is not None
+            and self.max_timeout is not None
+            and timeout > self.max_timeout
+        ):
+            raise PermissionError(
+                f"Timeout {timeout}s exceeds policy maximum {self.max_timeout}s."
+            )
+        if (
+            idle_timeout is not None
+            and self.max_idle_timeout is not None
+            and idle_timeout > self.max_idle_timeout
+        ):
+            raise PermissionError(
+                "Idle timeout "
+                f"{idle_timeout}s exceeds policy maximum {self.max_idle_timeout}s."
             )
 
 
@@ -169,7 +230,8 @@ class SandboxTools:
             timing/run metadata.
         """
 
-        self.policy.require("shell")
+        self.policy.require_shell_command(command)
+        self.policy.require_timeout(timeout, idle_timeout)
         run = self._create_run("shell", {"command": list(command)})
         started_at = run.started_at if run else utc_now()
         primitive = self.shell_primitive or ShellPrimitive(app_name=self.app_name)
@@ -282,7 +344,7 @@ class SandboxTools:
             Structured result with screenshot and observation artifacts.
         """
 
-        self.policy.require("browser")
+        self.policy.require_browser_url(url)
         run = self._create_run("browser", {"url": url})
         started_at = run.started_at if run else utc_now()
         target_dir = output_dir or (

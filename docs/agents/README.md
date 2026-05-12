@@ -8,3 +8,5 @@ Suggested reading:
 - `architecture.md`: how the package is layered.
 - `workflows.md`: command behavior and user-facing flows.
 - `testing.md`: local and opt-in Modal validation.
+- `../harness-integration.md`: how external harnesses should use the SDK.
+- `../security.md`: safety responsibilities and tool boundaries.

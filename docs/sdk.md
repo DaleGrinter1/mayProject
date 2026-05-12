@@ -46,6 +46,24 @@ tools = SandboxTools(
 Calling a tool that is not allowed raises `PermissionError` before a sandbox is
 started.
 
+Policies can also narrow shell, browser, and timeout behavior:
+
+```python
+tools = SandboxTools(
+    policy=SandboxToolPolicy(
+        allowed_tools=("shell", "browser"),
+        allowed_shell_commands=("python", "pytest"),
+        allowed_browser_domains=("example.com",),
+        max_timeout=60,
+        max_idle_timeout=20,
+    ),
+)
+```
+
+`allowed_shell_commands` checks the executable name, such as `python` in
+`["python", "--version"]`. `allowed_browser_domains` accepts exact hosts and
+subdomains.
+
 ## Artifacts
 
 Screenshot calls produce two artifacts:
@@ -83,3 +101,15 @@ production calls unless you need local audit files.
 
 The SDK is a tool-provider layer, not a full agent runtime. It does not manage
 planning, memory, user sessions, model calls, or multi-step orchestration.
+
+## Example Harness
+
+`examples/harness_runner.py` shows a small external-harness shape: parse a tool
+request, grant only that tool through `SandboxToolPolicy`, call `SandboxTools`,
+and print `ToolResult` as JSON.
+
+```bash
+uv run python examples/harness_runner.py shell -- python --version
+uv run python examples/harness_runner.py python-code "print('hello from sandbox')"
+uv run python examples/harness_runner.py screenshot https://example.com
+```
