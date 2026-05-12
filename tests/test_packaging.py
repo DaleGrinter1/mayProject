@@ -1,8 +1,12 @@
+"""Tests for the public package name and console entry points."""
+
 import tomllib
 from pathlib import Path
 
 
 def test_project_uses_agent_sandbox_package_identity() -> None:
+    """Verify packaging metadata matches the renamed sandbox provider."""
+
     data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
     assert data["project"]["name"] == "agent-sandbox"

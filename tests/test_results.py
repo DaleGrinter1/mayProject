@@ -1,3 +1,5 @@
+"""Tests for filesystem-safe run records and serialized sandbox results."""
+
 import json
 import shutil
 import unittest
@@ -16,7 +18,13 @@ from agent_sandbox.sandbox.results import (
 TEST_TMP_ROOT = Path(".agent-sandbox") / "test-tmp"
 
 
-def workspace_temp_dir():
+def workspace_temp_dir() -> Path:
+    """Create an isolated temporary directory under the project run root.
+
+    Returns:
+        A new directory path that the caller can remove after the test.
+    """
+
     TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     path = TEST_TMP_ROOT / uuid4().hex
     path.mkdir()
@@ -24,14 +32,22 @@ def workspace_temp_dir():
 
 
 class SandboxResultsTests(unittest.TestCase):
-    def tearDown(self):
+    """Unit tests for sandbox run/result data models."""
+
+    def tearDown(self) -> None:
+        """Remove temporary run directories created by each test."""
+
         shutil.rmtree(TEST_TMP_ROOT, ignore_errors=True)
 
-    def test_safe_slug_is_filesystem_friendly(self):
+    def test_safe_slug_is_filesystem_friendly(self) -> None:
+        """Verify arbitrary labels become stable path-safe slugs."""
+
         self.assertEqual(safe_slug("Browser Capture!"), "browser-capture")
         self.assertEqual(safe_slug("  ***  "), "task")
 
-    def test_create_sandbox_run_uses_stable_directory_shape(self):
+    def test_create_sandbox_run_uses_stable_directory_shape(self) -> None:
+        """Verify run directories encode time, task kind, and run ID."""
+
         temp_dir = workspace_temp_dir()
         try:
             started_at = datetime(2026, 5, 4, 1, 2, 3, tzinfo=UTC)
@@ -55,7 +71,9 @@ class SandboxResultsTests(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def test_sandbox_result_serializes_paths_and_artifacts(self):
+    def test_sandbox_result_serializes_paths_and_artifacts(self) -> None:
+        """Verify sandbox results write JSON-friendly paths and artifacts."""
+
         temp_dir = workspace_temp_dir()
         try:
             run = create_sandbox_run("shell", run_root=temp_dir, run_id="abc12345")

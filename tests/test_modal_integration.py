@@ -1,3 +1,5 @@
+"""Opt-in integration tests that create real Modal sandboxes."""
+
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -9,7 +11,8 @@ from agent_sandbox.workflows.sandbox import ManagedSandbox
 
 ARTIFACTS_DIR = Path("artifacts")
 
-
+# These tests are intentionally skipped by default because they create real
+# remote resources and require a configured Modal account.
 pytestmark = pytest.mark.skipif(
     os.environ.get("AGENT_SANDBOX_RUN_MODAL_TESTS") != "1",
     reason="set AGENT_SANDBOX_RUN_MODAL_TESTS=1 to run real Modal integration tests",
@@ -17,8 +20,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_modal_sandbox_can_copy_remote_text_file_to_local() -> None:
-    """Creates a real Modal sandbox and copies a text file back locally.
-    """
+    """Create a real Modal sandbox and copy a text file back locally."""
 
     name = f"copy-test-{uuid4().hex[:8]}"
     remote_path = "/tmp/agent_sandbox-copy-test.txt"
@@ -45,7 +47,7 @@ def test_modal_sandbox_can_copy_remote_text_file_to_local() -> None:
 
 
 def test_modal_sandbox_can_copy_local_script_and_execute_it() -> None:
-    """Copies a local script into a real Modal sandbox and runs it."""
+    """Copy a local script into a real Modal sandbox and run it."""
 
     name = f"put-test-{uuid4().hex[:8]}"
     ARTIFACTS_DIR.mkdir(exist_ok=True)

@@ -1,3 +1,5 @@
+"""Tests for named sandbox lifecycle workflows and their CLI wrapper."""
+
 from pathlib import Path
 import json
 
