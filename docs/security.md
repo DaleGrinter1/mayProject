@@ -30,9 +30,10 @@ controls:
 
 ```python
 SandboxToolPolicy(
-    allowed_tools=("shell", "browser"),
+    allowed_tools=("shell", "screenshot"),
     allowed_shell_commands=("python", "pytest"),
     allowed_browser_domains=("example.com",),
+    allowed_python_script_roots=("scripts",),
     max_timeout=60,
 )
 ```

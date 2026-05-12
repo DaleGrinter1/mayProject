@@ -13,6 +13,7 @@ external harness / CLI
 Use this shape when adding behavior:
 
 - `agent_sandbox/tools.py`: stable SDK surface for external agent harnesses.
+- `agent_sandbox/registry.py`: dynamic discovery and name-based tool calls.
 - `agent_sandbox/cli/`: argument parsing and user-facing command output.
 - `agent_sandbox/cli/output.py`: shared CLI table, JSON, and status rendering.
 - `agent_sandbox/workflows/`: product-level operations such as managed sandboxes.

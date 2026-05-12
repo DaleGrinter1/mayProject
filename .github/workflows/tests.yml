@@ -5,14 +5,22 @@ on:
   pull_request:
 
 jobs:
-  pytest:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Set up Python
-        run: uv python install 3.13
-      - name: Install dependencies
-        run: uv sync
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
       - name: Run tests
         run: uv run pytest

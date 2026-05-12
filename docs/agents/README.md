@@ -9,4 +9,6 @@ Suggested reading:
 - `workflows.md`: command behavior and user-facing flows.
 - `testing.md`: local and opt-in Modal validation.
 - `../harness-integration.md`: how external harnesses should use the SDK.
+- `../registry.md`: dynamic tool discovery and argument schemas.
+- `../protocol-adapters.md`: how to expose registry tools through protocols.
 - `../security.md`: safety responsibilities and tool boundaries.

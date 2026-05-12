@@ -9,7 +9,7 @@ This package owns sandbox-backed tools and structured execution results.
 ```text
 agent harness
   -> decides which tool call is allowed
-  -> calls SandboxTools
+  -> calls SandboxTools or SandboxToolRegistry
   -> receives ToolResult
   -> decides the agent's next step
 ```
@@ -25,6 +25,18 @@ tools = SandboxTools(
 )
 ```
 
+If the harness has a dynamic tool loop, use `SandboxToolRegistry`:
+
+```python
+from agent_sandbox import SandboxToolRegistry
+
+registry = SandboxToolRegistry(tools)
+for tool in registry.list_tools():
+    print(tool.to_dict())
+
+result = registry.call_tool("shell", {"command": ["python", "--version"]})
+```
+
 ## Policy
 
 Start with the narrowest useful tool list:
@@ -38,16 +50,18 @@ advance:
 
 ```python
 policy = SandboxToolPolicy(
-    allowed_tools=("shell", "browser"),
+    allowed_tools=("shell", "screenshot"),
     allowed_shell_commands=("python", "pytest"),
     allowed_browser_domains=("example.com", "docs.example.com"),
+    allowed_python_script_roots=("scripts",),
     max_timeout=60,
     max_idle_timeout=20,
 )
 ```
 
 Policy failures raise `PermissionError` before a sandbox is started. Runtime
-failures return `ToolResult(status="failed")`.
+failures return `ToolResult(status="failed")` with `error_code` when a stable
+category is available.
 
 ## Result Handling
 
@@ -60,11 +74,31 @@ Every SDK call returns `ToolResult` with stable fields:
 - `artifacts`
 - `metadata`
 - `error`
+- `error_code`
 - timing fields
 - optional run-recording fields
 
 Harnesses should branch on `status` and keep `metadata` with any agent trace.
 Use `to_dict()` when serializing results into logs or eval records.
+
+## Dynamic Tool Registry
+
+`SandboxToolRegistry` exposes a small adapter for harnesses that want tool
+discovery and name-based calls:
+
+- `list_tools()` returns policy-aware `ToolSpec` records.
+- `call_tool(name, arguments)` dispatches to the matching SDK method.
+- Unknown tool names and invalid argument shapes raise `ValueError`.
+- Policy violations still raise `PermissionError`.
+
+Registry tool names:
+
+- `shell`
+- `python_code`
+- `python_script`
+- `screenshot`
+
+See `docs/registry.md` for argument shapes and schema details.
 
 ## Temporary Calls vs Managed Sandboxes
 

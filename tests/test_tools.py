@@ -55,6 +55,28 @@ class FailingShellPrimitive:
         return CommandResult(returncode=2, stdout="", stderr="bad\n")
 
 
+class RaisingShellPrimitive:
+    """Shell primitive that raises to test normalized SDK errors."""
+
+    def run(
+        self,
+        command: list[str],
+        timeout: int | None = None,
+        idle_timeout: int | None = None,
+    ) -> CommandResult:
+        raise RuntimeError("boom")
+
+
+class FakePythonPrimitive:
+    """Python primitive used to test script policy without launching Modal."""
+
+    def run_code(self, code: str, *args: str) -> CommandResult:
+        return CommandResult(returncode=0, stdout="code\n", stderr="")
+
+    def run_script(self, script_path: Path, *args: str) -> CommandResult:
+        return CommandResult(returncode=0, stdout=str(script_path), stderr="")
+
+
 class FakeBrowserPrimitive:
     """Browser primitive that writes fake screenshot artifacts locally."""
 
@@ -109,6 +131,7 @@ def test_tool_result_to_dict_is_public_contract() -> None:
         "artifacts": [],
         "completed_at": None,
         "duration_ms": 5,
+        "error_code": None,
         "error": None,
         "metadata": {"tool": "shell"},
         "returncode": 0,
@@ -134,6 +157,22 @@ def test_sandbox_tools_marks_nonzero_commands_failed() -> None:
     assert result.status == "failed"
     assert result.returncode == 2
     assert result.stderr == "bad\n"
+    assert result.error_code == "tool_failed"
+
+
+def test_sandbox_tools_sets_error_code_for_tool_exceptions() -> None:
+    """Verify raised primitive errors get a stable error code."""
+
+    tools = SandboxTools(
+        policy=SandboxToolPolicy(allowed_tools=("shell",)),
+        shell_primitive=RaisingShellPrimitive(),
+    )
+
+    result = tools.shell(["python", "--version"])
+
+    assert result.status == "failed"
+    assert result.error == "boom"
+    assert result.error_code == "tool_exception"
 
 
 def test_sandbox_tools_rejects_disallowed_tools() -> None:
@@ -185,6 +224,62 @@ def test_sandbox_tools_rejects_disallowed_browser_domain() -> None:
 
     with pytest.raises(PermissionError, match="not allowed"):
         tools.screenshot("https://openai.com")
+
+
+def test_sandbox_tools_accepts_screenshot_policy_alias(tmp_path: Path) -> None:
+    """Verify harnesses can grant screenshot instead of browser."""
+
+    tools = SandboxTools(
+        policy=SandboxToolPolicy(allowed_tools=("screenshot",)),
+        browser_primitive=FakeBrowserPrimitive(),
+    )
+
+    result = tools.screenshot("https://example.com", output_dir=tmp_path)
+
+    assert result.status == "succeeded"
+
+
+def test_sandbox_tools_rejects_python_script_outside_allowed_roots(
+    tmp_path: Path,
+) -> None:
+    """Verify Python script path restrictions are enforced."""
+
+    allowed_root = tmp_path / "allowed"
+    denied_root = tmp_path / "denied"
+    allowed_root.mkdir()
+    denied_root.mkdir()
+    script_path = denied_root / "script.py"
+    script_path.write_text("print('no')", encoding="utf-8")
+    tools = SandboxTools(
+        policy=SandboxToolPolicy(
+            allowed_tools=("python",),
+            allowed_python_script_roots=(str(allowed_root),),
+        ),
+        python_primitive=FakePythonPrimitive(),
+    )
+
+    with pytest.raises(PermissionError, match="outside allowed roots"):
+        tools.python_script(script_path)
+
+
+def test_sandbox_tools_accepts_python_script_inside_allowed_roots(
+    tmp_path: Path,
+) -> None:
+    """Verify Python scripts inside allowed roots can run."""
+
+    script_path = tmp_path / "script.py"
+    script_path.write_text("print('yes')", encoding="utf-8")
+    tools = SandboxTools(
+        policy=SandboxToolPolicy(
+            allowed_tools=("python",),
+            allowed_python_script_roots=(str(tmp_path),),
+        ),
+        python_primitive=FakePythonPrimitive(),
+    )
+
+    result = tools.python_script(script_path)
+
+    assert result.status == "succeeded"
 
 
 def test_sandbox_tools_screenshot_returns_artifacts(tmp_path: Path) -> None:

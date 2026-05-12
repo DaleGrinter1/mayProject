@@ -66,7 +66,7 @@ def main() -> int:
 
     tools = SandboxTools(
         policy=SandboxToolPolicy(
-            allowed_tools=("shell", "python", "browser"),
+            allowed_tools=("shell", "python", "screenshot"),
             allowed_shell_commands=("python",),
             allowed_browser_domains=("example.com",),
         ),

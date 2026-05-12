@@ -12,7 +12,12 @@ import json
 import sys
 from pathlib import Path
 
-from agent_sandbox import SandboxToolPolicy, SandboxTools, ToolResult
+from agent_sandbox import (
+    SandboxToolPolicy,
+    SandboxToolRegistry,
+    SandboxTools,
+    ToolResult,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -77,10 +82,12 @@ def run_tool(args: argparse.Namespace) -> ToolResult:
         Structured SDK result.
     """
 
-    tools = SandboxTools(
-        app_name=args.app_name,
-        policy=SandboxToolPolicy(allowed_tools=(policy_tool(args.tool),)),
-        record_runs=args.record_run,
+    registry = SandboxToolRegistry(
+        SandboxTools(
+            app_name=args.app_name,
+            policy=SandboxToolPolicy(allowed_tools=(policy_tool(args.tool),)),
+            record_runs=args.record_run,
+        )
     )
 
     match args.tool:
@@ -88,13 +95,25 @@ def run_tool(args: argparse.Namespace) -> ToolResult:
             command = strip_separator(args.command)
             if not command:
                 raise SystemExit("Usage: harness_runner.py shell -- <command> [args...]")
-            return tools.shell(command)
+            return registry.call_tool("shell", {"command": command})
         case "python-code":
-            return tools.python_code(args.code, *strip_separator(args.args))
+            return registry.call_tool(
+                "python_code",
+                {"code": args.code, "args": strip_separator(args.args)},
+            )
         case "python-script":
-            return tools.python_script(args.script_path, *strip_separator(args.args))
+            return registry.call_tool(
+                "python_script",
+                {
+                    "script_path": str(args.script_path),
+                    "args": strip_separator(args.args),
+                },
+            )
         case "screenshot":
-            return tools.screenshot(args.url, output_dir=args.output_dir)
+            arguments = {"url": args.url}
+            if args.output_dir:
+                arguments["output_dir"] = str(args.output_dir)
+            return registry.call_tool("screenshot", arguments)
 
     raise SystemExit(f"Unknown tool: {args.tool}")
 

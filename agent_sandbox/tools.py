@@ -60,6 +60,9 @@ class SandboxToolPolicy:
             granted.
         allowed_browser_domains: Optional hostnames that browser calls may
             capture. When empty, any URL is allowed after `browser` is granted.
+        allowed_python_script_roots: Optional local directory roots that Python
+            script calls may read from. When empty, any local script path is
+            allowed after `python` is granted.
         max_timeout: Optional maximum timeout a tool call may request.
         max_idle_timeout: Optional maximum idle timeout a shell call may request.
     """
@@ -67,15 +70,21 @@ class SandboxToolPolicy:
     allowed_tools: tuple[str, ...] = ()
     allowed_shell_commands: tuple[str, ...] = ()
     allowed_browser_domains: tuple[str, ...] = ()
+    allowed_python_script_roots: tuple[str, ...] = ()
     max_timeout: int | None = None
     max_idle_timeout: int | None = None
 
     def require(self, tool: str) -> None:
-        if tool not in self.allowed_tools:
+        if not self.allows(tool):
             allowed = ", ".join(self.allowed_tools) or "none"
             raise PermissionError(
                 f"Sandbox tool '{tool}' is not allowed. Allowed tools: {allowed}."
             )
+
+    def allows(self, tool: str) -> bool:
+        if tool in self.allowed_tools:
+            return True
+        return tool == "browser" and "screenshot" in self.allowed_tools
 
     def require_shell_command(self, command: Sequence[str]) -> None:
         self.require("shell")
@@ -103,6 +112,23 @@ class SandboxToolPolicy:
                 f"Browser URL host '{host or '<empty>'}' is not allowed. "
                 f"Allowed domains: {allowed}."
             )
+
+    def require_python_script(self, script_path: Path) -> None:
+        self.require("python")
+        if not self.allowed_python_script_roots:
+            return
+        resolved_script = script_path.resolve()
+        for root in self.allowed_python_script_roots:
+            resolved_root = Path(root).resolve()
+            if (
+                resolved_script == resolved_root
+                or resolved_root in resolved_script.parents
+            ):
+                return
+        allowed = ", ".join(self.allowed_python_script_roots)
+        raise PermissionError(
+            f"Python script '{script_path}' is outside allowed roots: {allowed}."
+        )
 
     def require_timeout(
         self,
@@ -140,6 +166,7 @@ class ToolResult:
         artifacts: Files produced by the tool call.
         metadata: JSON-friendly details such as the tool name and inputs.
         error: Error message for failed tool setup or execution.
+        error_code: Stable machine-readable error category for failed results.
         run_id: Optional recorded run ID when run recording is enabled.
         started_at: UTC timestamp for when the tool call started.
         completed_at: UTC timestamp for when the tool call finished.
@@ -154,6 +181,7 @@ class ToolResult:
     artifacts: tuple[Artifact, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
+    error_code: str | None = None
     run_id: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -179,6 +207,7 @@ class ToolResult:
             "artifacts": [artifact.to_dict() for artifact in self.artifacts],
             "metadata": dict(self.metadata),
             "error": self.error,
+            "error_code": self.error_code,
             "run_id": self.run_id,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
@@ -242,6 +271,7 @@ class SandboxTools:
                 ToolResult(
                     status="failed",
                     error=str(exc),
+                    error_code="tool_exception",
                     metadata={"tool": "shell", "command": list(command)},
                     started_at=started_at,
                 ),
@@ -281,6 +311,7 @@ class SandboxTools:
                 ToolResult(
                     status="failed",
                     error=str(exc),
+                    error_code="tool_exception",
                     metadata={"tool": "python", **metadata},
                     started_at=started_at,
                 ),
@@ -303,7 +334,7 @@ class SandboxTools:
             timing/run metadata.
         """
 
-        self.policy.require("python")
+        self.policy.require_python_script(script_path)
         metadata = {
             "args": list(args),
             "script_path": str(script_path),
@@ -319,6 +350,7 @@ class SandboxTools:
                 ToolResult(
                     status="failed",
                     error=str(exc),
+                    error_code="tool_exception",
                     metadata={"tool": "python", **metadata},
                     started_at=started_at,
                 ),
@@ -366,6 +398,7 @@ class SandboxTools:
                         "text_path": str(text_path),
                     },
                     error=str(exc),
+                    error_code="tool_exception",
                     started_at=started_at,
                 ),
                 run,
@@ -404,6 +437,7 @@ class SandboxTools:
             stdout=result.stdout,
             stderr=result.stderr,
             metadata={"tool": tool, **metadata},
+            error_code="tool_failed" if result.returncode != 0 else None,
             started_at=started_at,
         )
 
@@ -433,6 +467,7 @@ class SandboxTools:
             artifacts=result.artifacts,
             metadata=result.metadata,
             error=result.error,
+            error_code=result.error_code,
             run_id=completed_run.run_id if completed_run else None,
             started_at=started_at,
             completed_at=completed_at,

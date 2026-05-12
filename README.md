@@ -10,36 +10,52 @@ Python, or browser execution in isolated Modal sandboxes.
 Generated files belong under `artifacts/`. Screenshots use
 `artifacts/screenshots/` by default.
 
-## Tool Provider Contract
+## Quick Start
+
+Install dependencies and check Modal setup:
+
+```bash
+uv sync
+uv run agent-sandbox doctor
+```
+
+If Modal is not logged in, create a token:
+
+```bash
+uv run modal token new
+```
+
+## Harness Integration
 
 External harnesses should import the stable SDK surface from `agent_sandbox`:
 
 ```python
-from pathlib import Path
-
-from agent_sandbox import SandboxToolPolicy, SandboxTools
+from agent_sandbox import SandboxToolPolicy, SandboxToolRegistry, SandboxTools
 
 tools = SandboxTools(
     app_name="my-app",
     policy=SandboxToolPolicy(
-        allowed_tools=("shell", "python", "browser"),
+        allowed_tools=("shell", "python", "screenshot"),
         allowed_shell_commands=("python", "pytest"),
         allowed_browser_domains=("example.com",),
+        allowed_python_script_roots=("scripts",),
         max_timeout=60,
     ),
 )
+registry = SandboxToolRegistry(tools)
 
-shell_result = tools.shell(["python", "--version"])
-code_result = tools.python_code("print('hello')")
-script_result = tools.python_script(Path("script.py"))
-shot_result = tools.screenshot("https://example.com")
+available_tools = registry.list_tools()
+result = registry.call_tool("shell", {"command": ["python", "--version"]})
 ```
 
+Use `SandboxToolRegistry` when a harness needs dynamic discovery and name-based
+tool calls. Use `SandboxTools` directly when normal Python methods are simpler.
+
 Each tool call returns a structured result with `status`, `returncode`,
-`stdout`, `stderr`, `artifacts`, `metadata`, `error`, timing fields, and
-optional run-recording paths. SDK calls create temporary per-task sandboxes by
-default. The harness owns orchestration, memory, planning, and agent policy;
-this package owns sandbox execution.
+`stdout`, `stderr`, `artifacts`, `metadata`, `error`, `error_code`, timing
+fields, and optional run-recording paths. SDK calls create temporary per-task
+sandboxes by default. The harness owns orchestration, memory, planning, and
+agent policy; this package owns sandbox execution.
 
 Enable local run records while debugging a harness:
 
@@ -52,11 +68,23 @@ tools = SandboxTools(
 
 Recorded runs are written under `.agent-sandbox/runs/`.
 
+## Direct SDK Calls
+
+```python
+from pathlib import Path
+
+shell_result = tools.shell(["python", "--version"])
+code_result = tools.python_code("print('hello')")
+script_result = tools.python_script(Path("scripts/check.py"))
+shot_result = tools.screenshot("https://example.com")
+```
+
 ## Project Layout
 
 ```text
 agent_sandbox/
   tools.py                     # stable SDK for external harnesses
+  registry.py                  # dynamic tool discovery/call adapter
   cli/                         # console script entry points
   config.py                    # pyproject.toml settings
   search.py                    # search-term to URL resolution
@@ -94,26 +122,6 @@ artifacts_dir = "artifacts"
 
 The `--app-name` flag overrides the configured app name for `agent-sandbox`
 managed sandbox commands.
-
-## Setup
-
-Install dependencies with `uv`:
-
-```bash
-uv sync
-```
-
-The real backend uses Modal. Check local readiness with:
-
-```bash
-uv run agent-sandbox doctor
-```
-
-If Modal is not logged in, create a token:
-
-```bash
-uv run modal token new
-```
 
 ## One-Shot Commands
 
@@ -224,11 +232,14 @@ This is useful for scripts and future automation.
 ## Documentation
 
 - `docs/sdk.md`: SDK contract, result shape, and run recording.
+- `docs/registry.md`: dynamic registry tool names and argument schemas.
+- `docs/protocol-adapters.md`: guidance for MCP or framework adapters.
 - `docs/cli.md`: one-shot and managed sandbox CLI behavior.
 - `docs/harness-integration.md`: guidance for agent harness authors.
 - `docs/security.md`: safety responsibilities and tool boundaries.
 - `docs/backend.md`: Modal backend boundary and future backend guidance.
 - `examples/`: small harness-style SDK examples.
+- `LICENSE`: MIT license.
 
 Try the fuller harness example when checking SDK ergonomics:
 
@@ -267,6 +278,15 @@ Run the local test suite:
 ```bash
 uv run pytest
 ```
+
+Enable the tracked pre-commit hook if you want Git to run the test suite before
+each commit:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook runs `uv run pytest` and blocks the commit if tests fail.
 
 The default tests validate parsing, workflow composition, primitive commands,
 structured SDK results, Pydantic models, config loading, and fake-runner
