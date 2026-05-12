@@ -273,6 +273,12 @@ Test harness orchestration without Modal:
 uv run python examples/fake_primitives.py
 ```
 
+Run the deterministic example agent for a no-Modal smoke test:
+
+```bash
+uv run python examples/example_agent.py
+```
+
 Run the real golden-path demo after Modal is configured:
 
 ```bash

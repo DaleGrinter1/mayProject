@@ -103,6 +103,16 @@ executor = SandboxToolExecutor(SandboxToolRegistry(tools))
 This exercises orchestration and result handling without creating Modal
 resources.
 
+## Example Agent
+
+`examples/example_agent.py` is a deterministic testing agent. It is not an LLM
+agent; it maps a few plain-text tasks to executor calls so harness authors can
+exercise tool routing, context propagation, audit records, and JSON output.
+
+```bash
+uv run python examples/example_agent.py
+```
+
 ## Real Backend Validation
 
 Run local tests normally:
