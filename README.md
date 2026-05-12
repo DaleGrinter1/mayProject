@@ -30,7 +30,15 @@ uv run modal token new
 External harnesses should import the stable SDK surface from `agent_sandbox`:
 
 ```python
-from agent_sandbox import SandboxToolPolicy, SandboxToolRegistry, SandboxTools
+from pathlib import Path
+
+from agent_sandbox import (
+    SandboxToolExecutor,
+    SandboxToolPolicy,
+    SandboxToolRegistry,
+    SandboxTools,
+    ToolCall,
+)
 
 tools = SandboxTools(
     app_name="my-app",
@@ -43,13 +51,22 @@ tools = SandboxTools(
     ),
 )
 registry = SandboxToolRegistry(tools)
+executor = SandboxToolExecutor(registry, audit_dir=Path(".agent-sandbox/audit"))
 
-available_tools = registry.list_tools()
-result = registry.call_tool("shell", {"command": ["python", "--version"]})
+available_tools = executor.list_tools()
+result = executor.call(
+    ToolCall(
+        tool="shell",
+        arguments={"command": ["python", "--version"]},
+        call_id="call-1",
+        agent_id="agent-1",
+    )
+)
 ```
 
-Use `SandboxToolRegistry` when a harness needs dynamic discovery and name-based
-tool calls. Use `SandboxTools` directly when normal Python methods are simpler.
+Use `SandboxToolExecutor` when a harness needs call envelopes, audit records,
+dynamic discovery, and name-based tool calls. Use `SandboxToolRegistry` or
+`SandboxTools` directly when lower-level Python methods are simpler.
 
 Each tool call returns a structured result with `status`, `returncode`,
 `stdout`, `stderr`, `artifacts`, `metadata`, `error`, `error_code`, timing
@@ -233,6 +250,7 @@ This is useful for scripts and future automation.
 
 - `docs/sdk.md`: SDK contract, result shape, and run recording.
 - `docs/registry.md`: dynamic registry tool names and argument schemas.
+- `docs/custom-harness.md`: executor, audit, and fake testing workflow.
 - `docs/protocol-adapters.md`: guidance for MCP or framework adapters.
 - `docs/cli.md`: one-shot and managed sandbox CLI behavior.
 - `docs/harness-integration.md`: guidance for agent harness authors.

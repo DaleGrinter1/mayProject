@@ -25,6 +25,8 @@ result = registry.call_tool("shell", {"command": ["python", "--version"]})
 ```
 
 See `docs/registry.md` for registry tool names and argument schemas.
+See `docs/custom-harness.md` for the higher-level executor with call envelopes
+and audit logging.
 
 ## Result Contract
 

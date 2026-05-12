@@ -9,7 +9,7 @@ This package owns sandbox-backed tools and structured execution results.
 ```text
 agent harness
   -> decides which tool call is allowed
-  -> calls SandboxTools or SandboxToolRegistry
+  -> calls SandboxToolExecutor, SandboxToolRegistry, or SandboxTools
   -> receives ToolResult
   -> decides the agent's next step
 ```
@@ -36,6 +36,9 @@ for tool in registry.list_tools():
 
 result = registry.call_tool("shell", {"command": ["python", "--version"]})
 ```
+
+For a full harness invocation envelope and optional audit records, use
+`SandboxToolExecutor`. See `docs/custom-harness.md`.
 
 ## Policy
 
@@ -129,7 +132,7 @@ AGENT_SANDBOX_RUN_MODAL_TESTS=1 uv run pytest tests/test_modal_integration.py
 ## Example
 
 `examples/harness_runner.py` is a compact harness-style entry point. It parses a
-tool request, grants only that tool through policy, calls `SandboxTools`, and
+tool request, grants only that tool through policy, calls the registry, and
 prints structured JSON.
 
 ```bash

@@ -1,13 +1,14 @@
 # Protocol Adapters
 
-`SandboxToolRegistry` is the boundary to use when exposing these tools through
-another protocol.
+`SandboxToolExecutor` and `SandboxToolRegistry` are the boundaries to use when
+exposing these tools through another protocol.
 
-The registry already provides the pieces most adapters need:
+The executor and registry provide the pieces most adapters need:
 
 - `list_tools()` for discovery.
 - `ToolSpec.input_schema` for argument schemas.
-- `call_tool(name, arguments)` for name-based dispatch.
+- `SandboxToolExecutor.call(...)` for envelope-based dispatch and audit.
+- `SandboxToolRegistry.call_tool(name, arguments)` for lower-level dispatch.
 - `ToolResult.to_dict()` for structured responses.
 
 An MCP, OpenAI tool-calling, LangGraph, or custom internal adapter should stay
@@ -16,7 +17,7 @@ thin:
 ```text
 protocol request
   -> validate or translate protocol arguments
-  -> registry.call_tool(name, arguments)
+  -> executor.call(ToolCall(...))
   -> serialize ToolResult.to_dict()
 ```
 

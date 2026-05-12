@@ -26,8 +26,11 @@ def test_public_package_exports_sdk_and_registry() -> None:
 
     assert agent_sandbox.__all__ == [
         "SandboxToolPolicy",
+        "SandboxToolExecutor",
         "SandboxToolRegistry",
         "SandboxTools",
+        "ToolCall",
         "ToolResult",
         "ToolSpec",
+        "create_fake_sandbox_tools",
     ]

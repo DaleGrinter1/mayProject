@@ -184,6 +184,24 @@ def test_sandbox_tools_rejects_disallowed_tools() -> None:
         tools.shell(["python", "--version"])
 
 
+def test_sandbox_tool_policy_for_harness_sets_conservative_defaults() -> None:
+    """Verify the harness policy helper normalizes fields and timeouts."""
+
+    policy = SandboxToolPolicy.for_harness(
+        allowed_tools=["shell", "screenshot"],
+        allowed_shell_commands=["python"],
+        allowed_browser_domains=["example.com"],
+        allowed_python_script_roots=["scripts"],
+    )
+
+    assert policy.allowed_tools == ("shell", "screenshot")
+    assert policy.allowed_shell_commands == ("python",)
+    assert policy.allowed_browser_domains == ("example.com",)
+    assert policy.allowed_python_script_roots == ("scripts",)
+    assert policy.max_timeout == 60
+    assert policy.max_idle_timeout == 20
+
+
 def test_sandbox_tools_rejects_disallowed_shell_command() -> None:
     """Verify shell command allowlists are enforced before sandbox startup."""
 

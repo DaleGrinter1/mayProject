@@ -74,6 +74,40 @@ class SandboxToolPolicy:
     max_timeout: int | None = None
     max_idle_timeout: int | None = None
 
+    @classmethod
+    def for_harness(
+        cls,
+        *,
+        allowed_tools: Sequence[str],
+        allowed_shell_commands: Sequence[str] = (),
+        allowed_browser_domains: Sequence[str] = (),
+        allowed_python_script_roots: Sequence[str] = (),
+        max_timeout: int | None = 60,
+        max_idle_timeout: int | None = 20,
+    ) -> "SandboxToolPolicy":
+        """Build a conservative policy for external agent harnesses.
+
+        Args:
+            allowed_tools: Explicit tool names the harness may call.
+            allowed_shell_commands: Optional shell executable allowlist.
+            allowed_browser_domains: Optional browser hostname allowlist.
+            allowed_python_script_roots: Optional local script root allowlist.
+            max_timeout: Maximum requested tool timeout.
+            max_idle_timeout: Maximum requested shell idle timeout.
+
+        Returns:
+            Policy with harness-friendly immutable tuple fields.
+        """
+
+        return cls(
+            allowed_tools=tuple(allowed_tools),
+            allowed_shell_commands=tuple(allowed_shell_commands),
+            allowed_browser_domains=tuple(allowed_browser_domains),
+            allowed_python_script_roots=tuple(allowed_python_script_roots),
+            max_timeout=max_timeout,
+            max_idle_timeout=max_idle_timeout,
+        )
+
     def require(self, tool: str) -> None:
         if not self.allows(tool):
             allowed = ", ".join(self.allowed_tools) or "none"
