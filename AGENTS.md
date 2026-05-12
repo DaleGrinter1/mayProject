@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-- This is a Python project named `mayproject`.
+- This is a Python project named `agent-sandbox`.
 - The package metadata lives in `pyproject.toml`.
 - Python is pinned to 3.13 via `.python-version` and `requires-python = ">=3.13,<3.14"`.
 - Dependencies are managed with `uv`; keep `uv.lock` in sync when dependencies change.
@@ -16,9 +16,9 @@
 
 ## Common Commands
 
-- Screenshot a URL: `uv run may-screenshot https://example.com`
-- Run a command in a sandbox: `uv run may-shell python --version`
-- Run a local Python script in a sandbox: `uv run may-python ./path/to/script.py`
+- Screenshot a URL: `uv run agent-sandbox-screenshot https://example.com`
+- Run a command in a sandbox: `uv run agent-sandbox-shell python --version`
+- Run a local Python script in a sandbox: `uv run agent-sandbox-python ./path/to/script.py`
 - Add a dependency: `uv add <package>`
 - Add a development dependency: `uv add --dev <package>`
 - Sync the environment: `uv sync`

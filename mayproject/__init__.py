@@ -1,2 +1,0 @@
-"""Mayproject sandbox automation package."""
-

@@ -4,15 +4,15 @@ from uuid import uuid4
 
 import pytest
 
-from mayproject.workflows.sandbox import ManagedSandbox
+from agent_sandbox.workflows.sandbox import ManagedSandbox
 
 
 ARTIFACTS_DIR = Path("artifacts")
 
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("MAYPROJECT_RUN_MODAL_TESTS") != "1",
-    reason="set MAYPROJECT_RUN_MODAL_TESTS=1 to run real Modal integration tests",
+    os.environ.get("AGENT_SANDBOX_RUN_MODAL_TESTS") != "1",
+    reason="set AGENT_SANDBOX_RUN_MODAL_TESTS=1 to run real Modal integration tests",
 )
 
 
@@ -21,7 +21,7 @@ def test_modal_sandbox_can_copy_remote_text_file_to_local() -> None:
     """
 
     name = f"copy-test-{uuid4().hex[:8]}"
-    remote_path = "/tmp/mayproject-copy-test.txt"
+    remote_path = "/tmp/agent_sandbox-copy-test.txt"
     ARTIFACTS_DIR.mkdir(exist_ok=True)
     local_path = ARTIFACTS_DIR / f"{name}.txt"
     manager = ManagedSandbox()
@@ -50,7 +50,7 @@ def test_modal_sandbox_can_copy_local_script_and_execute_it() -> None:
     name = f"put-test-{uuid4().hex[:8]}"
     ARTIFACTS_DIR.mkdir(exist_ok=True)
     local_script = ARTIFACTS_DIR / f"{name}.py"
-    remote_script = "/tmp/mayproject-put-test.py"
+    remote_script = "/tmp/agent_sandbox-put-test.py"
     manager = ManagedSandbox()
 
     try:

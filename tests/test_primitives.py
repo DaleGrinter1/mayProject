@@ -2,12 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from mayproject.primitives.browser import BrowserPrimitive
-from mayproject.primitives.python import PythonPrimitive
-from mayproject.primitives.repo import RepoPrimitive
-from mayproject.primitives.shell import ShellPrimitive
-from mayproject.sandbox.fake import FakeSandboxRunner
-from mayproject.sandbox.types import CommandResult, SandboxSpec
+from agent_sandbox.primitives.browser import BrowserPrimitive
+from agent_sandbox.primitives.python import PythonPrimitive
+from agent_sandbox.primitives.shell import ShellPrimitive
+from agent_sandbox.sandbox.fake import FakeSandboxRunner
+from agent_sandbox.sandbox.types import CommandResult, SandboxSpec
 
 
 class RunnerRecorder:
@@ -90,18 +89,3 @@ def test_browser_primitive_raises_on_failed_capture() -> None:
             Path("out.txt"),
         )
 
-
-def test_repo_primitive_writes_clone_and_command_script() -> None:
-    recorder = RunnerRecorder()
-
-    RepoPrimitive(runner_factory=recorder.factory).run_command(
-        "https://github.com/example/repo.git",
-        ["python", "-m", "pytest"],
-    )
-
-    runner = recorder.runners[0]
-    script, remote_path = runner.writes[0]
-    assert remote_path == "/tmp/run_repo_command.sh"
-    assert "git clone --depth 1 'https://github.com/example/repo.git' '/tmp/repo'" in script
-    assert "'python' '-m' 'pytest'" in script
-    assert runner.commands == [("sh", "/tmp/run_repo_command.sh")]

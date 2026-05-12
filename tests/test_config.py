@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mayproject.config import load_config
+from agent_sandbox.config import load_config
 
 
 def test_load_config_uses_defaults_when_file_is_missing(tmp_path: Path) -> None:
@@ -10,11 +10,11 @@ def test_load_config_uses_defaults_when_file_is_missing(tmp_path: Path) -> None:
     assert config.artifacts_dir == Path("artifacts")
 
 
-def test_load_config_reads_mayproject_settings(tmp_path: Path) -> None:
+def test_load_config_reads_agent_sandbox_settings(tmp_path: Path) -> None:
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         """
-        [tool.mayproject]
+        [tool.agent-sandbox]
         app_name = "test-app"
         artifacts_dir = "local-artifacts"
         """,

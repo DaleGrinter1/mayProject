@@ -1,4 +1,4 @@
-from mayproject.urls import is_valid_url
+from agent_sandbox.urls import is_valid_url
 
 # Test for if the URL validation function correctly identifies valid URLs
 def test_is_valid_url_accepts_http_and_https() -> None:

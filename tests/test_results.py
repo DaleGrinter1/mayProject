@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from mayproject.sandbox.results import (
+from agent_sandbox.sandbox.results import (
     Artifact,
     SandboxResult,
     create_sandbox_run,
@@ -13,7 +13,7 @@ from mayproject.sandbox.results import (
 )
 
 
-TEST_TMP_ROOT = Path(".mayproject") / "test-tmp"
+TEST_TMP_ROOT = Path(".agent-sandbox") / "test-tmp"
 
 
 def workspace_temp_dir():

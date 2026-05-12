@@ -1,5 +1,5 @@
 [project]
-name = "mayproject"
+name = "agent-sandbox"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -16,11 +16,10 @@ requires = [
 build-backend = "hatchling.build"
 
 [project.scripts]
-may-agent = "mayproject.cli.agent:main"
-may-python = "mayproject.cli.python:main"
-may-screenshot = "mayproject.cli.screenshot:main"
-may-sandbox = "mayproject.cli.sandbox:main"
-may-shell = "mayproject.cli.shell:main"
+agent-sandbox = "agent_sandbox.cli.sandbox:main"
+agent-sandbox-python = "agent_sandbox.cli.python:main"
+agent-sandbox-screenshot = "agent_sandbox.cli.screenshot:main"
+agent-sandbox-shell = "agent_sandbox.cli.shell:main"
 
 [dependency-groups]
 dev = [
@@ -32,6 +31,6 @@ pythonpath = [
     ".",
 ]
 
-[tool.mayproject]
+[tool.agent-sandbox]
 app_name = "my-app"
 artifacts_dir = "artifacts"

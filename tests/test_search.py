@@ -1,4 +1,4 @@
-from mayproject.search import DuckDuckGoResultsParser, clean_result_url
+from agent_sandbox.search import DuckDuckGoResultsParser, clean_result_url
 
 
 def test_clean_result_url_extracts_duckduckgo_redirect() -> None:

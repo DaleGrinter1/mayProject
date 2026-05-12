@@ -1,6 +1,6 @@
 import subprocess
 
-from mayproject.workflows.doctor import check_modal_auth, run_doctor
+from agent_sandbox.workflows.doctor import check_modal_auth, run_doctor
 
 
 def test_run_doctor_reports_ready_checks() -> None:

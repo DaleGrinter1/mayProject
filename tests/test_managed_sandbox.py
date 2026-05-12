@@ -3,18 +3,18 @@ import json
 
 import pytest
 
-from mayproject.cli import sandbox as sandbox_cli
-from mayproject.cli.sandbox import (
+from agent_sandbox.cli import sandbox as sandbox_cli
+from agent_sandbox.cli.sandbox import (
     clear_terminal,
     friendly_error,
     main,
     positive_interval,
     watch_handles,
 )
-from mayproject.sandbox.fake import FakeSandboxRunner
-from mayproject.sandbox.types import CommandResult, SandboxSpec
-from mayproject.workflows import sandbox as sandbox_workflow
-from mayproject.workflows.sandbox import ManagedSandbox, parse_volume_mount
+from agent_sandbox.sandbox.fake import FakeSandboxRunner
+from agent_sandbox.sandbox.types import CommandResult, SandboxSpec
+from agent_sandbox.workflows import sandbox as sandbox_workflow
+from agent_sandbox.workflows.sandbox import ManagedSandbox, parse_volume_mount
 
 
 class MissingSandbox(Exception):

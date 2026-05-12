@@ -1,4 +1,4 @@
-from mayproject.sandbox import images
+from agent_sandbox.sandbox import images
 
 
 def test_get_image_supports_dev_image(monkeypatch) -> None:

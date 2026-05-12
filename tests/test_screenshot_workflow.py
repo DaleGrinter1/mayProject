@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mayproject.workflows import screenshot as screenshot_workflow
+from agent_sandbox.workflows import screenshot as screenshot_workflow
 
 
 class StubBrowser:
