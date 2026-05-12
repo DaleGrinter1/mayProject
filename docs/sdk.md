@@ -32,6 +32,30 @@ Stable fields:
 Policy violations raise `PermissionError`. Sandbox startup, command, copy, and
 browser failures return `ToolResult(status="failed")`.
 
+## Tool Policy
+
+`SandboxToolPolicy` is an allowlist. A harness must opt in to each tool it plans
+to call:
+
+```python
+tools = SandboxTools(
+    policy=SandboxToolPolicy(allowed_tools=("shell", "python")),
+)
+```
+
+Calling a tool that is not allowed raises `PermissionError` before a sandbox is
+started.
+
+## Artifacts
+
+Screenshot calls produce two artifacts:
+
+- `screenshot`: a PNG image.
+- `observation`: a text file captured alongside the screenshot.
+
+When run recording is disabled, screenshot artifacts default to
+`artifacts/agents/screenshots/` unless an output directory is passed.
+
 ## Run Recording
 
 Run recording is optional:
@@ -54,3 +78,8 @@ artifacts/
 
 Use this while developing or debugging a harness. Leave it off for lightweight
 production calls unless you need local audit files.
+
+## Scope
+
+The SDK is a tool-provider layer, not a full agent runtime. It does not manage
+planning, memory, user sessions, model calls, or multi-step orchestration.

@@ -87,6 +87,26 @@ artifacts_dir = "artifacts"
 The `--app-name` flag overrides the configured app name for `agent-sandbox`
 managed sandbox commands.
 
+## Setup
+
+Install dependencies with `uv`:
+
+```bash
+uv sync
+```
+
+The real backend uses Modal. Check local readiness with:
+
+```bash
+uv run agent-sandbox doctor
+```
+
+If Modal is not logged in, create a token:
+
+```bash
+uv run modal token new
+```
+
 ## One-Shot Commands
 
 Use one-shot commands when you want a temporary sandbox to do one job and then
@@ -164,6 +184,23 @@ uv run agent-sandbox screenshot --id sb-... "example search term"
 Managed screenshots need a sandbox created with the `browser` image because
 they use Playwright and Chromium.
 
+## Artifacts And Run Records
+
+Generated files should stay under `artifacts/`. Screenshot commands write to
+`artifacts/screenshots/` by default.
+
+SDK calls can also record local run details while debugging:
+
+```python
+tools = SandboxTools(
+    policy=SandboxToolPolicy(allowed_tools=("shell",)),
+    record_runs=True,
+)
+```
+
+Recorded runs are written under `.agent-sandbox/runs/` and include
+`result.json`, plus `stdout.txt`, `stderr.txt`, and artifacts when present.
+
 ## Structured Output
 
 Use `--json` with commands that describe sandboxes:
@@ -213,3 +250,12 @@ AGENT_SANDBOX_RUN_MODAL_TESTS=1 uv run pytest tests/test_modal_integration.py
 
 Those tests create real sandboxes, copy files in and out through `artifacts/`,
 and terminate the sandboxes afterward.
+
+## Current Limits
+
+- Modal is the only real backend in this version.
+- Browser screenshots require the `browser` image.
+- SDK calls are intended as tool-provider primitives, not as a full agent
+  runtime.
+- Managed sandboxes are best for debugging and manual repeated work; normal
+  harness calls should use the SDK or one-shot commands.
