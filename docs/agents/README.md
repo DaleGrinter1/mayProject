@@ -12,4 +12,5 @@ Suggested reading:
 - `../harness-integration.md`: how external harnesses should use the SDK.
 - `../registry.md`: dynamic tool discovery and argument schemas.
 - `../protocol-adapters.md`: how to expose registry tools through protocols.
+- `../openai-agents-sdk-plan.md`: implementation plan for OpenAI Agents SDK support.
 - `../security.md`: safety responsibilities and tool boundaries.

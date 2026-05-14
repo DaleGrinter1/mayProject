@@ -252,6 +252,7 @@ This is useful for scripts and future automation.
 - `docs/registry.md`: dynamic registry tool names and argument schemas.
 - `docs/custom-harness.md`: executor, audit, and fake testing workflow.
 - `docs/protocol-adapters.md`: guidance for MCP or framework adapters.
+- `docs/openai-agents-sdk-plan.md`: plan for OpenAI Agents SDK compatibility.
 - `docs/cli.md`: one-shot and managed sandbox CLI behavior.
 - `docs/harness-integration.md`: guidance for agent harness authors.
 - `docs/security.md`: safety responsibilities and tool boundaries.
@@ -303,14 +304,29 @@ Run the local test suite:
 uv run pytest
 ```
 
-Enable the tracked pre-commit hook if you want Git to run the test suite before
-each commit:
+Enable the tracked Git hook if you want Git to run the test suite before each
+commit:
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
 The hook runs `uv run pytest` and blocks the commit if tests fail.
+
+Alternatively, use the `pre-commit` tool:
+
+```bash
+uvx pre-commit install
+uvx pre-commit run --all-files
+```
+
+The `.pre-commit-config.yaml` file defines a local hook that also runs
+`uv run pytest`. Use either the tracked `.githooks/` setup or `pre-commit`; if
+you previously set `core.hooksPath`, unset it before using `pre-commit`:
+
+```bash
+git config --unset core.hooksPath
+```
 
 The default tests validate parsing, workflow composition, primitive commands,
 structured SDK results, Pydantic models, config loading, and fake-runner
